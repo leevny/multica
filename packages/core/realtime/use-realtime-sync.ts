@@ -49,6 +49,7 @@ import { larkKeys } from "../lark/queries";
 import { slackKeys } from "../slack/queries";
 import { dingtalkKeys } from "../dingtalk/queries";
 import { wecomKeys } from "../wecom/queries";
+import { wecomWebhookKeys } from "../wecomwebhook/queries";
 import { telegramKeys } from "../telegram/queries";
 import {
   onIssueCreated,
@@ -1099,6 +1100,17 @@ export function useRealtimeSync(
       telegram_installation: () => {
         const wsId = getCurrentWsId();
         if (wsId) qc.invalidateQueries({ queryKey: telegramKeys.installations(wsId) });
+      },
+      wecomwebhook_installation: () => {
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: wecomWebhookKeys.installations(wsId) });
+      },
+      wecomwebhook_binding: () => {
+        // A session's channel_source projection changes when it is bound to
+        // (or unbound from) a group-robot webhook, so the chat lists and any
+        // open session view refetch.
+        const wsId = getCurrentWsId();
+        if (wsId) qc.invalidateQueries({ queryKey: chatKeys.all(wsId) });
       },
       pull_request: () => {
         // PR list is keyed by issue id, not workspace, so we invalidate all

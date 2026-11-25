@@ -70,6 +70,9 @@ import type {
   TelegramInstallation,
   ListTelegramInstallationsResponse,
   RedeemTelegramBindingTokenResponse,
+  WecomWebhookInstallation,
+  ListWecomWebhookInstallationsResponse,
+  WecomWebhookChatSessionBinding,
   GitHubConnectResponse,
   IssuePullRequestsResponse,
   IssueEnvironmentsResponse,
@@ -4680,6 +4683,54 @@ export const EMPTY_REDEEM_TELEGRAM_BINDING_TOKEN_RESPONSE: RedeemTelegramBinding
   workspace_id: "",
   installation_id: "",
   telegram_user_id: "",
+};
+
+// WeCom group-robot webhook ("群机器人") installations. The webhook key is
+// the bearer credential for its group, so the API only ever carries the
+// last-4 suffix (key_suffix) — never the key itself.
+export const WecomWebhookInstallationSchema = z.object({
+  id: z.string(),
+  workspace_id: z.string().default(""),
+  agent_id: z.string().default(""),
+  key_suffix: z.string().default(""),
+  installer_user_id: z.string().default(""),
+  status: z.string().default("revoked"),
+  installed_at: z.string().default(""),
+  created_at: z.string().default(""),
+  updated_at: z.string().default(""),
+}).loose();
+
+export const EMPTY_WECOM_WEBHOOK_INSTALLATION: WecomWebhookInstallation = {
+  id: "",
+  workspace_id: "",
+  agent_id: "",
+  key_suffix: "",
+  installer_user_id: "",
+  status: "revoked",
+  installed_at: "",
+  created_at: "",
+  updated_at: "",
+};
+
+export const ListWecomWebhookInstallationsResponseSchema = z.object({
+  installations: z.array(WecomWebhookInstallationSchema).default([]),
+  configured: z.boolean().default(false),
+  install_supported: z.boolean().optional(),
+}).loose();
+
+export const EMPTY_LIST_WECOM_WEBHOOK_INSTALLATIONS_RESPONSE: ListWecomWebhookInstallationsResponse = {
+  installations: [],
+  configured: false,
+};
+
+export const WecomWebhookChatSessionBindingSchema = z.object({
+  chat_session_id: z.string().default(""),
+  installation_id: z.string().default(""),
+}).loose();
+
+export const EMPTY_WECOM_WEBHOOK_CHAT_SESSION_BINDING: WecomWebhookChatSessionBinding = {
+  chat_session_id: "",
+  installation_id: "",
 };
 
 // Skills. Introduced for `POST /api/skills/:id/refresh` (update a skill from

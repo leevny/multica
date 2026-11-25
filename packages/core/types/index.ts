@@ -351,6 +351,13 @@ export type {
   RedeemTelegramBindingTokenResponse,
 } from "./telegram";
 export type {
+  WecomWebhookInstallation,
+  ListWecomWebhookInstallationsResponse,
+  RegisterWecomWebhookRequest,
+  BindWecomWebhookChatSessionRequest,
+  WecomWebhookChatSessionBinding,
+} from "./wecomwebhook";
+export type {
   Autopilot,
   AutopilotStatus,
   AutopilotExecutionMode,

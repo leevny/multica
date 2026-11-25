@@ -835,6 +835,53 @@ describe("ApiClient schema fallback", () => {
     });
   });
 
+  describe("WeCom group-robot webhook integration", () => {
+    // key_suffix is the only piece of the webhook key the API carries, and
+    // the binding echo drives the dialog's "bound here" state — both must
+    // survive malformed responses as safe defaults.
+    it("falls back to a safe empty installation list when the response is malformed", async () => {
+      stubFetchJson({ installations: "not-an-array", configured: true });
+      const client = new ApiClient("https://api.example.test");
+      await expect(client.listWecomWebhookInstallations("ws-1")).resolves.toEqual({
+        installations: [],
+        configured: false,
+      });
+    });
+
+    it("defaults fields omitted by an older server", async () => {
+      stubFetchJson({
+        installations: [{ id: "ww-1", status: "active" }],
+        configured: true,
+        install_supported: true,
+      });
+      const client = new ApiClient("https://api.example.test");
+      const res = await client.listWecomWebhookInstallations("ws-1");
+      expect(res.installations[0]).toMatchObject({
+        id: "ww-1",
+        workspace_id: "",
+        agent_id: "",
+        key_suffix: "",
+      });
+      expect(res.install_supported).toBe(true);
+    });
+
+    it("falls back safely when register and bind responses are malformed", async () => {
+      stubFetchJson({ id: 123 });
+      const client = new ApiClient("https://api.example.test");
+      await expect(
+        client.registerWecomWebhook("ws-1", "agent-1", { key: "0123456789abcdef" }),
+      ).resolves.toMatchObject({ id: "", status: "revoked" });
+
+      stubFetchJson({ chat_session_id: 456 });
+      await expect(
+        client.bindWecomWebhookChatSession("ws-1", {
+          chat_session_id: "session-1",
+          installation_id: "inst-1",
+        }),
+      ).resolves.toEqual({ chat_session_id: "", installation_id: "" });
+    });
+  });
+
   describe("listDingTalkGroups", () => {
     it("preserves bot activity metadata for each group relationship", async () => {
       stubFetchJson({

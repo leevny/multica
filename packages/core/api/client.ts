@@ -280,6 +280,11 @@ import type {
   ListTelegramInstallationsResponse,
   RegisterTelegramRequest,
   RedeemTelegramBindingTokenResponse,
+  WecomWebhookInstallation,
+  ListWecomWebhookInstallationsResponse,
+  RegisterWecomWebhookRequest,
+  BindWecomWebhookChatSessionRequest,
+  WecomWebhookChatSessionBinding,
   Squad,
   SquadMember,
   SquadMemberStatusListResponse,
@@ -511,6 +516,12 @@ import {
   EMPTY_TELEGRAM_INSTALLATION,
   EMPTY_LIST_TELEGRAM_INSTALLATIONS_RESPONSE,
   EMPTY_REDEEM_TELEGRAM_BINDING_TOKEN_RESPONSE,
+  WecomWebhookInstallationSchema,
+  ListWecomWebhookInstallationsResponseSchema,
+  WecomWebhookChatSessionBindingSchema,
+  EMPTY_WECOM_WEBHOOK_INSTALLATION,
+  EMPTY_LIST_WECOM_WEBHOOK_INSTALLATIONS_RESPONSE,
+  EMPTY_WECOM_WEBHOOK_CHAT_SESSION_BINDING,
   EMPTY_BILLING_BALANCE,
   EMPTY_BILLING_TRANSACTIONS_PAGE,
   EMPTY_BILLING_BATCHES_PAGE,
@@ -6645,5 +6656,65 @@ export class ApiClient {
       EMPTY_REDEEM_TELEGRAM_BINDING_TOKEN_RESPONSE,
       { endpoint: "POST /api/telegram/binding/redeem" },
     );
+  }
+
+  // WeCom group-robot webhook ("群机器人") integration. registerWecomWebhook
+  // performs a BYO install: the admin pastes the webhook key, and the
+  // backend really posts a test message with it before persisting — the
+  // group sees that message when the call succeeds.
+  async listWecomWebhookInstallations(workspaceId: string): Promise<ListWecomWebhookInstallationsResponse> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/wecomwebhook/installations`);
+    return parseWithFallback(
+      raw,
+      ListWecomWebhookInstallationsResponseSchema,
+      EMPTY_LIST_WECOM_WEBHOOK_INSTALLATIONS_RESPONSE,
+      { endpoint: "GET /api/workspaces/:id/wecomwebhook/installations" },
+    );
+  }
+
+  async registerWecomWebhook(
+    workspaceId: string,
+    agentId: string,
+    body: RegisterWecomWebhookRequest,
+  ): Promise<WecomWebhookInstallation> {
+    const search = new URLSearchParams({ agent_id: agentId });
+    const raw = await this.fetch<unknown>(
+      `/api/workspaces/${workspaceId}/wecomwebhook/install?${search.toString()}`,
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+      },
+    );
+    return parseWithFallback(raw, WecomWebhookInstallationSchema, EMPTY_WECOM_WEBHOOK_INSTALLATION, {
+      endpoint: "POST /api/workspaces/:id/wecomwebhook/install",
+    });
+  }
+
+  async deleteWecomWebhookInstallation(workspaceId: string, installationId: string): Promise<void> {
+    await this.fetch(`/api/workspaces/${workspaceId}/wecomwebhook/installations/${installationId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async bindWecomWebhookChatSession(
+    workspaceId: string,
+    body: BindWecomWebhookChatSessionRequest,
+  ): Promise<WecomWebhookChatSessionBinding> {
+    const raw = await this.fetch<unknown>(`/api/workspaces/${workspaceId}/wecomwebhook/bindings`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    return parseWithFallback(
+      raw,
+      WecomWebhookChatSessionBindingSchema,
+      EMPTY_WECOM_WEBHOOK_CHAT_SESSION_BINDING,
+      { endpoint: "POST /api/workspaces/:id/wecomwebhook/bindings" },
+    );
+  }
+
+  async unbindWecomWebhookChatSession(workspaceId: string, chatSessionId: string): Promise<void> {
+    await this.fetch(`/api/workspaces/${workspaceId}/wecomwebhook/bindings/${chatSessionId}`, {
+      method: "DELETE",
+    });
   }
 }

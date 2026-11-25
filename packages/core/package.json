@@ -177,6 +177,8 @@
     "./dingtalk/queries": "./dingtalk/queries.ts",
     "./wecom": "./wecom/index.ts",
     "./wecom/queries": "./wecom/queries.ts",
+    "./wecomwebhook": "./wecomwebhook/index.ts",
+    "./wecomwebhook/queries": "./wecomwebhook/queries.ts",
     "./weixin": "./weixin/index.ts",
     "./telegram": "./telegram/index.ts",
     "./telegram/queries": "./telegram/queries.ts",
