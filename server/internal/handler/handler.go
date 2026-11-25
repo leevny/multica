@@ -37,6 +37,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/integrations/slack"
 	"github.com/multica-ai/multica/server/internal/integrations/telegram"
 	"github.com/multica-ai/multica/server/internal/integrations/wecom"
+	"github.com/multica-ai/multica/server/internal/integrations/wecomwebhook"
 	"github.com/multica-ai/multica/server/internal/integrations/weixin"
 	"github.com/multica-ai/multica/server/internal/issuestatus"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
@@ -418,6 +419,14 @@ type Handler struct {
 
 	WeixinInstall  *weixin.InstallService
 	WeixinOutbound *weixin.Outbound
+
+	// WecomWebhookInstall owns the WeCom group-robot webhook install
+	// lifecycle (paste a key / list / revoke) and the at-rest encryption of
+	// each webhook's key. Nil unless MULTICA_WECOM_WEBHOOK_SECRET_KEY is set.
+	WecomWebhookInstall *wecomwebhook.InstallService
+	// WecomWebhookBindings writes the explicit chat_session → webhook
+	// binding the announce path resolves. Nil alongside WecomWebhookInstall.
+	WecomWebhookBindings *wecomwebhook.BindingService
 
 	// channelFileDelivery names the channel types that can, IN THIS
 	// DEPLOYMENT, carry a file the agent produced the last hop into the

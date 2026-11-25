@@ -41,6 +41,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/integrations/slack"
 	"github.com/multica-ai/multica/server/internal/integrations/telegram"
 	"github.com/multica-ai/multica/server/internal/integrations/wecom"
+	"github.com/multica-ai/multica/server/internal/integrations/wecomwebhook"
 	"github.com/multica-ai/multica/server/internal/integrations/weixin"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
 	"github.com/multica-ai/multica/server/internal/middleware"
@@ -1285,6 +1286,56 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		logSecretboxGateDisabled("wecom integration", "MULTICA_WECOM_SECRET_KEY", err)
 	}
 
+	// WeCom group-robot webhook integration ("群机器人"). Purely outbound:
+	// each installation is one webhook key that posts text/markdown into the
+	// single WeCom group that owns it. WeCom offers no inbound events for
+	// group robots, so there is no ResolverSet and nothing registers on the
+	// channel router; the Supervisor still drives one "connection" per
+	// installation so lease fencing stays uniform (a webhook Channel's
+	// Connect blocks on ctx.Done() and holds the lease until shutdown).
+	//
+	// Gated by MULTICA_WECOM_WEBHOOK_SECRET_KEY. Without it, the whole block
+	// is skipped and the wecomwebhook endpoints return 503; existing
+	// deployments are unaffected. No public HTTP callback is needed.
+	if wecomWebhookKey, err := secretbox.LoadKey("MULTICA_WECOM_WEBHOOK_SECRET_KEY"); err == nil {
+		wecomWebhookBox, err := secretbox.New(wecomWebhookKey)
+		if err != nil {
+			slog.Error("wecomwebhook: secretbox.New failed; wecomwebhook integration disabled", "error", err)
+		} else {
+			decrypt := wecomWebhookBox.Open
+			// One sender serves the Factory (reply-path Send), the announce
+			// subscriber, and the install flow's proof-of-control test post.
+			wecomWebhookSender := wecomwebhook.NewSender()
+			if err := wecomwebhook.RegisterWecomWebhook(channelRegistry, wecomwebhook.ChannelDeps{
+				Decrypt: decrypt,
+				Sender:  wecomWebhookSender,
+				Logger:  slog.Default(),
+			}); err != nil {
+				slog.Error("wecomwebhook: factory registration failed; wecomwebhook integration disabled", "error", err)
+			} else {
+				// Terminal-lifecycle announcer: chat:done / task:failed /
+				// task:cancelled reach the bound group only through this.
+				wecomWebhookOutbound, outErr := wecomwebhook.NewOutbound(queries, decrypt, wecomWebhookSender, slog.Default())
+				if outErr != nil {
+					slog.Error("wecomwebhook: outbound init failed; announcements disabled", "error", outErr)
+				} else {
+					wecomWebhookOutbound.Register(bus)
+				}
+
+				wecomWebhookInstall, instErr := wecomwebhook.NewInstallService(queries, pool, wecomWebhookBox, wecomWebhookSender, slog.Default())
+				if instErr != nil {
+					slog.Error("wecomwebhook: InstallService init failed; install disabled", "error", instErr)
+				} else {
+					h.WecomWebhookInstall = wecomWebhookInstall
+					h.WecomWebhookBindings = wecomwebhook.NewBindingService(queries, pool, wecomWebhookInstall, slog.Default())
+				}
+				slog.Info("wecomwebhook integration enabled (group robot webhook, outbound only)")
+			}
+		}
+	} else {
+		logSecretboxGateDisabled("wecomwebhook integration", "MULTICA_WECOM_WEBHOOK_SECRET_KEY", err)
+	}
+
 	// WeChat iLink needs only an at-rest key; users authorize their bot by QR.
 	if key, err := secretbox.LoadKey("MULTICA_WEIXIN_SECRET_KEY"); err == nil {
 		box, boxErr := secretbox.New(key)
@@ -2126,6 +2177,24 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
 					r.Delete("/telegram/installations/{installationId}", h.RevokeTelegramInstallation)
 					r.Post("/telegram/install", h.RegisterTelegramBot)
+				})
+
+				// WeCom group-robot webhook integration. Same admin/member
+				// split as Telegram: listing is member-visible; install +
+				// revoke are admin-only. Binding a chat session to a webhook
+				// (and unbinding) needs per-session authorization the router
+				// cannot make — the session creator or an admin, checked in
+				// the handler — so those sit in the member group.
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceMemberFromURL(queries, "id"))
+					r.Get("/wecomwebhook/installations", h.ListWecomWebhookInstallations)
+					r.Post("/wecomwebhook/bindings", h.BindWecomWebhookChatSession)
+					r.Delete("/wecomwebhook/bindings/{chatSessionId}", h.UnbindWecomWebhookChatSession)
+				})
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
+					r.Delete("/wecomwebhook/installations/{installationId}", h.RevokeWecomWebhookInstallation)
+					r.Post("/wecomwebhook/install", h.RegisterWecomWebhook)
 				})
 			})
 		})

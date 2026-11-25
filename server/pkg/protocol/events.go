@@ -265,4 +265,16 @@ const (
 	EventWeixinInstallationRevoked   = "weixin_installation:revoked"
 	EventTelegramInstallationCreated = "telegram_installation:created"
 	EventTelegramInstallationRevoked = "telegram_installation:revoked"
+
+	// WeCom group-robot webhook installation lifecycle. Same contract as the
+	// Telegram pair: front-ends invalidate the wecomwebhook installations
+	// query on either.
+	EventWecomWebhookInstallationCreated = "wecomwebhook_installation:created"
+	EventWecomWebhookInstallationRevoked = "wecomwebhook_installation:revoked"
+
+	// WeCom group-robot webhook binding lifecycle: a chat session was bound
+	// to (or unbound from) a webhook installation, which changes the
+	// session's channel_source projection. Front-ends invalidate the chat
+	// session queries on it.
+	EventWecomWebhookBindingChanged = "wecomwebhook_binding:changed"
 )
