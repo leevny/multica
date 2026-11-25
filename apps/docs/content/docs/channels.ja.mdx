@@ -41,6 +41,14 @@ Telegram は画像、ファイル、動画、音声を添付ファイルとし�
 - [Telegram Bot 連携](/telegram-bot-integration)
 - [WeChat Bot 連携](/weixin-bot-integration)
 
+## WeCom グループロボット（送信専用）
+
+WeCom グループロボットの webhook は送信専用チャネルです。webhook キーを持つグループにメッセージを投稿するだけで、WeCom は受信の手段を提供していません。質問への回答、会話への参加、タスクの作成はできません。Multica と会話しないグループに、エージェントの処理結果を通知するために使います。
+
+インストール方法は対話型 Bot とは異なります。ワークスペースの管理者が WeCom グループのグループロボット設定でロボットを作成し、その webhook キーを Multica の設定 → チャンネルページに貼り付けると、Multica はテストメッセージを実際に送信してキーを検証します。1 つの webhook は 1 つのエージェントにバインドされます。
+
+インストール後、Multica でチャットを開き、⋯ メニューの「WeCom グループへ通知」からそのチャットを webhook にバインドします。以後、そのチャットのターンが完了・失敗・キャンセルされるたびに、結果がグループへ通知されます。通知は WeCom の markdown サブセットで描画されます。見出し、太字、リンク、インラインコード、引用、文字色に対応し、リスト・表・コードブロック・画像はフォールバックされます。長い返信は複数のメッセージに分割され、各ロボットは毎分最大 20 メッセージを受け付けます。バインドを解除するとそのチャットの通知が止まり、webhook を切断するとすべて停止します。
+
 ## メッセージが処理される流れ
 
 1. Multica が Bot に対応するワークスペースとエージェントを特定します。
@@ -103,6 +111,7 @@ MULTICA_LARK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_SLACK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_DINGTALK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_WECOM_SECRET_KEY=<base64-encoded 32-byte key>
+MULTICA_WECOM_WEBHOOK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_TELEGRAM_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_WEIXIN_SECRET_KEY=<base64-encoded 32-byte key>
 ```

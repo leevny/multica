@@ -41,6 +41,14 @@ Telegram 会把图片、文件、视频和音频作为附件转交给智能体�
 - [Telegram Bot 接入](/telegram-bot-integration)
 - [微信 Bot 接入](/weixin-bot-integration)
 
+## 企业微信群机器人（仅推送）
+
+企业微信群机器人 webhook 是纯出站渠道：只向持有其 webhook key 的群发送消息，企业微信不提供任何接收能力。它不能回答问题、参与对话或创建任务——适合把智能体的处理结果播报到群里。
+
+安装方式与交互式 Bot 不同：工作区管理员在企业微信群的群机器人设置中创建群机器人，把 webhook key 粘贴到 Multica 的设置 → 渠道页，Multica 会真实发送一条测试消息验证 key。每个 webhook 绑定一个智能体。
+
+安装后，在 Multica 中打开一个对话，通过 ⋯ 菜单的“推送到企微群…”把它绑定到某个 webhook。此后该对话每轮结束、失败或取消时，结果都会播报到群里。播报按企业微信 markdown 子集渲染：支持标题、加粗、链接、行内代码、引用和字色；列表、表格、代码块和图片会被降级。超长回复会拆成多条消息发送，每个群机器人每分钟最多接收 20 条消息。取消绑定即停止该对话的播报；断开 webhook 则全部停止。
+
 ## 消息的执行流程
 
 1. Multica 根据 Bot 找到对应的工作区和智能体。
@@ -103,6 +111,7 @@ MULTICA_LARK_SECRET_KEY=<base64 编码的 32 字节密钥>
 MULTICA_SLACK_SECRET_KEY=<base64 编码的 32 字节密钥>
 MULTICA_DINGTALK_SECRET_KEY=<base64 编码的 32 字节密钥>
 MULTICA_WECOM_SECRET_KEY=<base64 编码的 32 字节密钥>
+MULTICA_WECOM_WEBHOOK_SECRET_KEY=<base64 编码的 32 字节密钥>
 MULTICA_TELEGRAM_SECRET_KEY=<base64 编码的 32 字节密钥>
 MULTICA_WEIXIN_SECRET_KEY=<base64 编码的 32 字节密钥>
 ```

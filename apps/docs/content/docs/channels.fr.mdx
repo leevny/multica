@@ -41,6 +41,14 @@ Guides pas à pas :
 - [Intégration du bot Telegram](/telegram-bot-integration)
 - [Intégration du bot WeChat](/weixin-bot-integration)
 
+## Robot de groupe WeCom (annonce seule)
+
+Le webhook de robot de groupe WeCom est un canal sortant uniquement : il publie un message dans le groupe dont il détient la clé de webhook, et WeCom ne propose aucun moyen de recevoir quoi que ce soit. Il ne peut pas répondre aux questions, participer aux conversations ni créer des issues — il sert à annoncer ce qu'un agent a fait, dans un groupe qui ne parle pas à Multica.
+
+L'installation diffère des Bots interactifs : un administrateur d'espace de travail crée un robot de groupe dans les paramètres du groupe WeCom, colle sa clé de webhook dans Multica sous Paramètres → Canaux, et Multica vérifie la clé en publiant réellement un message de test dans le groupe. Chaque webhook est lié à un agent.
+
+Après l'installation, ouvrez une discussion dans Multica et utilisez l'entrée « Envoyer vers un groupe WeCom » du menu ⋯ pour la lier à un webhook. Ensuite, à chaque fin, échec ou annulation d'un tour de cette discussion, le résultat est annoncé dans le groupe. Les annonces rendent les réponses de l'agent dans le sous-ensemble markdown WeCom : titres, gras, liens, code en ligne, citations et couleurs de police ; les listes, tableaux, blocs de code et images sont dégradés. Les réponses longues sont divisées en plusieurs messages, et chaque robot accepte au plus 20 messages par minute. Délier la discussion arrête ses annonces ; déconnecter le webhook les arrête toutes.
+
 ## Traitement d'un message
 
 1. Multica identifie l'espace de travail et l'agent auxquels le bot est rattaché.
@@ -103,6 +111,7 @@ MULTICA_LARK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_SLACK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_DINGTALK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_WECOM_SECRET_KEY=<base64-encoded 32-byte key>
+MULTICA_WECOM_WEBHOOK_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_TELEGRAM_SECRET_KEY=<base64-encoded 32-byte key>
 MULTICA_WEIXIN_SECRET_KEY=<base64-encoded 32-byte key>
 ```
