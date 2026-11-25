@@ -7,6 +7,7 @@ import { larkInstallationsOptions } from "@multica/core/lark";
 import { slackInstallationsOptions } from "@multica/core/slack";
 import { dingtalkInstallationsOptions } from "@multica/core/dingtalk";
 import { wecomInstallationsOptions } from "@multica/core/wecom";
+import { wecomWebhookInstallationsOptions } from "@multica/core/wecomwebhook";
 import { weixinInstallationsOptions } from "@multica/core/weixin";
 import { telegramInstallationsOptions } from "@multica/core/telegram";
 import type {
@@ -17,6 +18,7 @@ import type {
   WecomInstallation,
   TelegramInstallation,
   WeixinInstallation,
+  WecomWebhookInstallation,
 } from "@multica/core/types";
 import type { ChannelIntegration } from "./settings-navigation";
 
@@ -26,7 +28,8 @@ export type ChannelConnection =
   | { channel: "dingtalk"; installation: DingTalkInstallation }
   | { channel: "wecom"; installation: WecomInstallation }
   | { channel: "telegram"; installation: TelegramInstallation }
-  | { channel: "weixin"; installation: WeixinInstallation };
+  | { channel: "weixin"; installation: WeixinInstallation }
+  | { channel: "wecomwebhook"; installation: WecomWebhookInstallation };
 
 export function channelChatLink(
   connection: ChannelConnection,
@@ -60,7 +63,8 @@ export function useMessagingChannels() {
   const wecom = useQuery({ ...wecomInstallationsOptions(wsId), enabled });
   const telegram = useQuery({ ...telegramInstallationsOptions(wsId), enabled });
   const weixin = useQuery({ ...weixinInstallationsOptions(wsId), enabled });
-  const queries = { lark, slack, dingtalk, wecom, telegram, weixin };
+  const wecomwebhook = useQuery({ ...wecomWebhookInstallationsOptions(wsId), enabled });
+  const queries = { lark, slack, dingtalk, wecom, telegram, weixin, wecomwebhook };
   const connections: ChannelConnection[] = [
     ...(lark.data?.installations ?? []).map((installation) => ({
       channel: "lark" as const,
@@ -84,6 +88,10 @@ export function useMessagingChannels() {
     })),
     ...(telegram.data?.installations ?? []).map((installation) => ({
       channel: "telegram" as const,
+      installation,
+    })),
+    ...(wecomwebhook.data?.installations ?? []).map((installation) => ({
+      channel: "wecomwebhook" as const,
       installation,
     })),
   ].filter(({ installation }) => installation.status === "active");

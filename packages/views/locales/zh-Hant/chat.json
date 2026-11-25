@@ -321,5 +321,19 @@
     },
     "queue_label": "喚醒：{{title}}",
     "queue_fallback": "喚醒"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "推送到企業微信群…",
+    "dialog_title": "推送到企業微信群",
+    "installation_label": "群機器人 ····{{suffix}}",
+    "start_pushing": "推送",
+    "stop_pushing": "停止推送",
+    "bound_toast": "已推送到企業微信群",
+    "unbound_toast": "已停止推送到企業微信群",
+    "bind_failed": "推送失敗",
+    "unbind_failed": "停止推送失敗",
+    "load_failed": "群機器人載入失敗",
+    "loading": "載入中…",
+    "no_installations": "暫無可用的群機器人，請先在設定的渠道頁連接"
   }
 }

@@ -2294,5 +2294,12 @@
     "cancel": "取消",
     "toast_joined": "已加入 {{title}}",
     "toast_failed": "加入项目失败。"
+  },
+  "wecomwebhook": {
+    "section_title": "企微群机器人",
+    "page_description": "通过群机器人 webhook 把对话结果推送到企业微信群。仅出站——机器人不接收消息。",
+    "key_label": "Webhook Key",
+    "key_hint": "粘贴企业微信群机器人的 Webhook Key。安装时会向群里发送一条测试消息进行验证。",
+    "installing": "正在连接..."
   }
 }

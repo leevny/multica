@@ -2317,5 +2317,12 @@
     "cancel": "Cancelar",
     "toast_joined": "Te uniste a {{title}}",
     "toast_failed": "No se pudo unir al proyecto."
+  },
+  "wecomwebhook": {
+    "section_title": "Robot de grupo de WeCom",
+    "page_description": "Envía los resultados de un chat a un grupo de WeCom mediante el webhook de un robot de grupo. Solo saliente: el robot no recibe mensajes.",
+    "key_label": "Clave de webhook",
+    "key_hint": "Pega la clave de webhook del robot de grupo de WeCom. Al instalar se envía un mensaje de prueba al grupo para verificarla.",
+    "installing": "Conectando…"
   }
 }

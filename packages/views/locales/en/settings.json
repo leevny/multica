@@ -2317,5 +2317,12 @@
     "cancel": "Cancel",
     "toast_joined": "You joined {{title}}",
     "toast_failed": "Could not join the project."
+  },
+  "wecomwebhook": {
+    "section_title": "WeCom group robot",
+    "page_description": "Push a chat's outcomes into a WeCom group through a group-robot webhook. Outbound only — the robot cannot receive messages.",
+    "key_label": "Webhook key",
+    "key_hint": "Paste the webhook key from the WeCom group-robot settings. Installing posts a test message into the group to verify it.",
+    "installing": "Connecting..."
   }
 }

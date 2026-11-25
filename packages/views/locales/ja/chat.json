@@ -321,5 +321,19 @@
     },
     "queue_label": "ウェイクアップ：{{title}}",
     "queue_fallback": "ウェイクアップ"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "WeCom グループへ通知…",
+    "dialog_title": "WeCom グループへプッシュ",
+    "installation_label": "グループロボット ····{{suffix}}",
+    "start_pushing": "プッシュ",
+    "stop_pushing": "プッシュを停止",
+    "bound_toast": "WeCom グループへのプッシュを開始しました",
+    "unbound_toast": "WeCom グループへのプッシュを停止しました",
+    "bind_failed": "プッシュできませんでした",
+    "unbind_failed": "プッシュを停止できませんでした",
+    "load_failed": "グループロボットの読み込みに失敗しました",
+    "loading": "読み込み中…",
+    "no_installations": "利用可能なグループロボットがありません。設定 → チャンネルで先に接続してください"
   }
 }

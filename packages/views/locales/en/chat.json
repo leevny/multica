@@ -326,5 +326,19 @@
     },
     "queue_label": "Wakeup: {{title}}",
     "queue_fallback": "Wakeup"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "Push to WeCom group...",
+    "dialog_title": "Push to a WeCom group",
+    "installation_label": "Group robot ····{{suffix}}",
+    "start_pushing": "Push",
+    "stop_pushing": "Stop pushing",
+    "bound_toast": "This chat now pushes to the WeCom group",
+    "unbound_toast": "Stopped pushing to the WeCom group",
+    "bind_failed": "Could not push this chat to the group",
+    "unbind_failed": "Could not stop pushing",
+    "load_failed": "Failed to load group robots",
+    "loading": "Loading...",
+    "no_installations": "No group robots yet — connect one under Settings → Channels first"
   }
 }

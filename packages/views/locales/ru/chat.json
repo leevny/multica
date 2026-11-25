@@ -336,5 +336,19 @@
     },
     "queue_label": "Напоминание: {{title}}",
     "queue_fallback": "Напоминание"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "Отправить в группу WeCom…",
+    "dialog_title": "Отправка в группу WeCom",
+    "installation_label": "Бот группы ····{{suffix}}",
+    "start_pushing": "Отправлять",
+    "stop_pushing": "Остановить отправку",
+    "bound_toast": "Этот чат теперь отправляется в группу WeCom",
+    "unbound_toast": "Отправка в группу WeCom остановлена",
+    "bind_failed": "Не удалось отправить этот чат в группу",
+    "unbind_failed": "Не удалось остановить отправку",
+    "load_failed": "Не удалось загрузить ботов групп",
+    "loading": "Загрузка…",
+    "no_installations": "Пока нет ботов групп — подключите их сначала в Настройках → Каналы"
   }
 }

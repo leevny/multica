@@ -58,6 +58,7 @@ vi.mock("@multica/core/api", async (original) => ({
       "listWecomInstallations",
       "listTelegramInstallations",
       "listWeixinInstallations",
+      "listWecomWebhookInstallations",
       "beginWeixinLogin",
       "pollWeixinLogin",
       "cancelWeixinLogin",
@@ -71,6 +72,8 @@ vi.mock("@multica/core/api", async (original) => ({
       "deleteWecomInstallation",
       "deleteTelegramInstallation",
       "deleteWeixinInstallation",
+      "registerWecomWebhook",
+      "deleteWecomWebhookInstallation",
       "listAgentDingTalkGroups",
       "listAgents",
       "beginLarkInstall",
@@ -129,6 +132,7 @@ beforeEach(() => {
     "listWecomInstallations",
     "listTelegramInstallations",
     "listWeixinInstallations",
+    "listWecomWebhookInstallations",
   ] as const) {
     vi.mocked(api[name]).mockResolvedValue(listing() as never);
   }
@@ -666,7 +670,7 @@ describe("workspace overview", () => {
     );
     expect(state.replace).toHaveBeenCalledWith("/acme/settings?tab=channels");
     expect(screen.getByText("Who can connect")).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: "Connect" })).toHaveLength(6);
+    expect(screen.getAllByRole("button", { name: "Connect" })).toHaveLength(7);
   });
 
   it("reports failed reads as unavailable and keeps a retry control", async () => {

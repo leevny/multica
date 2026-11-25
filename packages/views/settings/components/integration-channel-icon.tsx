@@ -5,13 +5,14 @@ import { SlackMark } from "./slack-mark";
 import { TelegramMark } from "./telegram-mark";
 import { WecomMark } from "./wecom-mark";
 
-type IntegrationChannel = "lark" | "slack" | "dingtalk" | "wecom" | "telegram" | "weixin";
+type IntegrationChannel = "lark" | "slack" | "dingtalk" | "wecom" | "telegram" | "weixin" | "wecomwebhook";
 
 // Every channel gets its own brand mark, never a generic lucide glyph: the icon
 // is what tells a reader which platform the section belongs to, and a stand-in
 // speech bubble or plug says nothing (see WecomMark, #6585). lucide-react ships
 // no brand icons, so a new channel needs its own `*-mark.tsx` before it can be
-// listed here.
+// listed here. wecomwebhook is the same WeCom brand (group-robot webhook), so
+// it shares WecomMark.
 export function IntegrationChannelIcon({ channel }: { channel: IntegrationChannel }) {
   const icon = {
     lark: <LarkMark className="h-4 w-4" />,
@@ -20,6 +21,7 @@ export function IntegrationChannelIcon({ channel }: { channel: IntegrationChanne
     wecom: <WecomMark className="h-4 w-4" />,
     weixin: <WeChat className="h-4 w-4" />,
     telegram: <TelegramMark className="h-4 w-4" />,
+    wecomwebhook: <WecomMark className="h-4 w-4" />,
   }[channel];
 
   return (

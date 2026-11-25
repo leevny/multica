@@ -2294,5 +2294,12 @@
     "cancel": "キャンセル",
     "toast_joined": "{{title}} に参加しました",
     "toast_failed": "プロジェクトに参加できませんでした。"
+  },
+  "wecomwebhook": {
+    "section_title": "WeCom グループロボット",
+    "page_description": "グループロボットの webhook でチャットの結果を WeCom グループへ通知します。送信専用で、ロボットはメッセージを受信できません。",
+    "key_label": "Webhook キー",
+    "key_hint": "WeCom グループロボットの Webhook キーを貼り付けてください。接続時にグループへテストメッセージを送信して検証します。",
+    "installing": "接続中…"
   }
 }

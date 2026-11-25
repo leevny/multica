@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Archive, ArchiveRestore, MoreHorizontal, Pencil, Settings2, Trash2 } from "@multica/ui/icons";
+import {
+  Archive,
+  ArchiveRestore,
+  MoreHorizontal,
+  Pencil,
+  Send,
+  Settings2,
+  Trash2,
+} from "@multica/ui/icons";
 import { IconButton } from "@multica/ui/components/common/icon-button";
 import {
   DropdownMenu,
@@ -35,6 +43,7 @@ import { useNavigation } from "../../navigation";
 import { useT } from "../../i18n";
 import { TooltipHint } from "@multica/ui/components/common/tooltip-hint";
 import { ChatWakeupHeaderButton, useChatWakeups } from "./chat-wakeups";
+import { WecomWebhookPushDialog } from "./wecomwebhook-push-dialog";
 
 /**
  * Per-session header for the conversation pane, read as a breadcrumb: the
@@ -73,6 +82,7 @@ export function ChatSessionHeader({
 
   const [editing, setEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [pushOpen, setPushOpen] = useState(false);
   const [draft, setDraft] = useState(session.title ?? "");
   const inputRef = useRef<HTMLInputElement>(null);
   const isComposingRef = useRef(false);
@@ -268,6 +278,10 @@ export function ChatSessionHeader({
                   {t(($) => $.header.agent_settings)}
                 </DropdownMenuItem>
               )}
+              <DropdownMenuItem onClick={() => setPushOpen(true)}>
+                <Send className="h-4 w-4" />
+                {t(($) => $.push_wecomwebhook.menu_item)}
+              </DropdownMenuItem>
               <DropdownMenuSeparator />
               {isArchived ? (
                 <>
@@ -292,6 +306,14 @@ export function ChatSessionHeader({
           </div>
         }
       />
+
+      {pushOpen ? (
+        <WecomWebhookPushDialog
+          session={session}
+          open={pushOpen}
+          onOpenChange={setPushOpen}
+        />
+      ) : null}
 
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>

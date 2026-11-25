@@ -326,5 +326,19 @@
     },
     "queue_label": "Réveil : {{title}}",
     "queue_fallback": "Réveil"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "Envoyer vers un groupe WeCom…",
+    "dialog_title": "Envoyer vers un groupe WeCom",
+    "installation_label": "Robot de groupe ····{{suffix}}",
+    "start_pushing": "Envoyer",
+    "stop_pushing": "Arrêter l'envoi",
+    "bound_toast": "Cette discussion envoie désormais vers le groupe WeCom",
+    "unbound_toast": "Envoi vers le groupe WeCom arrêté",
+    "bind_failed": "Impossible d'envoyer cette discussion vers le groupe",
+    "unbind_failed": "Impossible d'arrêter l'envoi",
+    "load_failed": "Échec du chargement des robots de groupe",
+    "loading": "Chargement…",
+    "no_installations": "Aucun robot de groupe pour l'instant — connectez-en un dans Paramètres → Canaux"
   }
 }

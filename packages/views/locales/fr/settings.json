@@ -2317,5 +2317,12 @@
     "cancel": "Annuler",
     "toast_joined": "Vous avez rejoint {{title}}",
     "toast_failed": "Impossible de rejoindre le projet."
+  },
+  "wecomwebhook": {
+    "section_title": "Robot de groupe WeCom",
+    "page_description": "Envoie les résultats d'une discussion dans un groupe WeCom via le webhook d'un robot de groupe. Sortant uniquement : le robot ne reçoit pas de messages.",
+    "key_label": "Clé de webhook",
+    "key_hint": "Collez la clé de webhook du robot de groupe WeCom. L'installation envoie un message de test dans le groupe pour la vérifier.",
+    "installing": "Connexion…"
   }
 }

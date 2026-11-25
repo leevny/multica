@@ -326,5 +326,19 @@
     },
     "queue_label": "Recordatorio: {{title}}",
     "queue_fallback": "Recordatorio"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "Enviar a grupo de WeCom…",
+    "dialog_title": "Enviar a un grupo de WeCom",
+    "installation_label": "Robot de grupo ····{{suffix}}",
+    "start_pushing": "Enviar",
+    "stop_pushing": "Dejar de enviar",
+    "bound_toast": "Este chat ahora envía al grupo de WeCom",
+    "unbound_toast": "Se detuvo el envío al grupo de WeCom",
+    "bind_failed": "No se pudo enviar este chat al grupo",
+    "unbind_failed": "No se pudo detener el envío",
+    "load_failed": "No se pudieron cargar los robots de grupo",
+    "loading": "Cargando…",
+    "no_installations": "Aún no hay robots de grupo: conecta uno primero en Ajustes → Canales"
   }
 }

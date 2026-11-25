@@ -321,5 +321,19 @@
     },
     "queue_label": "웨이크업: {{title}}",
     "queue_fallback": "웨이크업"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "WeCom 그룹에 전송…",
+    "dialog_title": "WeCom 그룹에 전송",
+    "installation_label": "그룹 로봇 ····{{suffix}}",
+    "start_pushing": "전송",
+    "stop_pushing": "전송 중지",
+    "bound_toast": "WeCom 그룹 전송이 시작되었습니다",
+    "unbound_toast": "WeCom 그룹 전송이 중지되었습니다",
+    "bind_failed": "전송하지 못했습니다",
+    "unbind_failed": "전송을 중지하지 못했습니다",
+    "load_failed": "그룹 로봇을 불러오지 못했습니다",
+    "loading": "불러오는 중…",
+    "no_installations": "사용 가능한 그룹 로봇이 없습니다. 설정 → 채널에서 먼저 연결하세요"
   }
 }

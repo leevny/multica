@@ -28,6 +28,7 @@ import { useMessagingChannels } from "./use-messaging-channels";
 import { LarkChannelAuthorization } from "./lark-channel-authorization";
 import { WecomChannelAuthorization } from "./wecom-channel-authorization";
 import { WeixinChannelAuthorization } from "./weixin-channel-authorization";
+import { WecomWebhookChannelAuthorization } from "./wecomwebhook-channel-authorization";
 
 export function ChannelConnectDialog({
   agents,
@@ -229,12 +230,20 @@ function ChannelConnectSteps({
         </>
       ) : (
         <>
-          {channel === "weixin" ? null : (
+          {/* weixin and wecomwebhook have no per-channel guide page; their
+              hints live in the authorization step itself. */}
+          {channel === "weixin" || channel === "wecomwebhook" ? null : (
             <Button variant="link" className="w-fit p-0" onClick={openGuide}>
               {t(($) => $.channels.setup_guide)}
             </Button>
           )}
-          {channel === "wecom" && queries.wecom.data?.scan_install_supported ? (
+          {channel === "wecomwebhook" ? (
+            <WecomWebhookChannelAuthorization
+              wsId={wsId}
+              agentId={agent.id}
+              onClose={onClose}
+            />
+          ) : channel === "wecom" && queries.wecom.data?.scan_install_supported ? (
             <div className="space-y-1.5">
               <Label htmlFor="channel-method">
                 {t(($) => $.channels.method_label)}
@@ -258,7 +267,10 @@ function ChannelConnectSteps({
               </select>
             </div>
           ) : null}
-          {channel === "lark" ? (
+          {channel === "wecomwebhook" ? (
+            // The key form above is the whole step; nothing else renders.
+            null
+          ) : channel === "lark" ? (
             <LarkChannelAuthorization
               wsId={wsId}
               agentId={agent.id}

@@ -2294,5 +2294,12 @@
     "cancel": "취소",
     "toast_joined": "{{title}}에 참여했습니다",
     "toast_failed": "프로젝트에 참여하지 못했습니다."
+  },
+  "wecomwebhook": {
+    "section_title": "WeCom 그룹 로봇",
+    "page_description": "그룹 로봇 웹훅으로 채팅 결과를 WeCom 그룹에 전송합니다. 외부 전용이며 로봇은 메시지를 받을 수 없습니다.",
+    "key_label": "Webhook 키",
+    "key_hint": "WeCom 그룹 로봇의 Webhook 키를 붙여넣으세요. 연결 시 그룹에 테스트 메시지를 보내 검증합니다.",
+    "installing": "연결 중…"
   }
 }

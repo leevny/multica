@@ -321,5 +321,19 @@
     },
     "queue_label": "唤醒：{{title}}",
     "queue_fallback": "唤醒"
+  },
+  "push_wecomwebhook": {
+    "menu_item": "推送到企微群...",
+    "dialog_title": "推送到企业微信群",
+    "installation_label": "群机器人 ····{{suffix}}",
+    "start_pushing": "推送",
+    "stop_pushing": "停止推送",
+    "bound_toast": "已推送到企业微信群",
+    "unbound_toast": "已停止推送到企业微信群",
+    "bind_failed": "推送失败",
+    "unbind_failed": "停止推送失败",
+    "load_failed": "群机器人加载失败",
+    "loading": "加载中...",
+    "no_installations": "暂无可用的群机器人，请先在设置的渠道页连接"
   }
 }
