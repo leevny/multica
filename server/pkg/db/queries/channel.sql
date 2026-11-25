@@ -741,6 +741,37 @@ WHERE chat_session_id = sqlc.arg('chat_session_id')
 SELECT * FROM channel_chat_session_binding
 WHERE chat_session_id = $1;
 
+-- name: CreateChannelChatSessionBindingForExistingSession :one
+-- Explicit bind of an EXISTING chat session (the wecomwebhook announce flow:
+-- a session created in the web UI gets pushed to a group robot). Unlike the
+-- inbound EnsureSession path the session already exists and may carry retired
+-- binding generations and prior context generations, so BOTH revisions are
+-- computed here instead of defaulted: route_revision per
+-- (installation_id, channel_chat_id), context_revision per session — it must
+-- exceed every prior generation of this session or the generation-table
+-- insert trips its (chat_session_id, revision) unique index.
+WITH next_route AS (
+    SELECT COALESCE(MAX(route_revision) + 1, 1)::bigint AS route_revision
+    FROM channel_chat_session_binding AS existing
+    WHERE existing.installation_id = $2 AND existing.channel_chat_id = $4
+), next_context AS (
+    SELECT COALESCE(MAX(revision) + 1, 1)::bigint AS revision
+    FROM channel_chat_context_generation AS gen
+    WHERE gen.chat_session_id = $1
+), binding AS (
+INSERT INTO channel_chat_session_binding (
+    chat_session_id, installation_id, channel_type, channel_chat_id, chat_type,
+    config, route_revision, context_revision
+)
+SELECT $1, $2, $3, $4, $5, $6, next_route.route_revision, next_context.revision
+FROM next_route, next_context
+RETURNING *
+), generation AS (
+    INSERT INTO channel_chat_context_generation (chat_session_id, revision)
+    SELECT chat_session_id, context_revision FROM binding
+)
+SELECT * FROM binding;
+
 -- name: ListChannelChatSessionBindingsBySessions :many
 -- Batch projection for Chat list responses. Historical bindings are retained,
 -- so retired Chats keep their channel source while only the active generation

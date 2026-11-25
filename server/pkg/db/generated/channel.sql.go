@@ -797,6 +797,99 @@ func (q *Queries) CreateChannelChatSessionBinding(ctx context.Context, arg Creat
 	return i, err
 }
 
+const createChannelChatSessionBindingForExistingSession = `-- name: CreateChannelChatSessionBindingForExistingSession :one
+WITH next_route AS (
+    SELECT COALESCE(MAX(route_revision) + 1, 1)::bigint AS route_revision
+    FROM channel_chat_session_binding AS existing
+    WHERE existing.installation_id = $2 AND existing.channel_chat_id = $4
+), next_context AS (
+    SELECT COALESCE(MAX(revision) + 1, 1)::bigint AS revision
+    FROM channel_chat_context_generation AS gen
+    WHERE gen.chat_session_id = $1
+), binding AS (
+INSERT INTO channel_chat_session_binding (
+    chat_session_id, installation_id, channel_type, channel_chat_id, chat_type,
+    config, route_revision, context_revision
+)
+SELECT $1, $2, $3, $4, $5, $6, next_route.route_revision, next_context.revision
+FROM next_route, next_context
+RETURNING id, chat_session_id, installation_id, channel_type, channel_chat_id, chat_type, last_message_id, last_thread_id, config, created_at, pending_fresh, context_revision, route_revision, retired_at, history_start_message_id, history_end_message_id, history_boundary_pending
+), generation AS (
+    INSERT INTO channel_chat_context_generation (chat_session_id, revision)
+    SELECT chat_session_id, context_revision FROM binding
+)
+SELECT id, chat_session_id, installation_id, channel_type, channel_chat_id, chat_type, last_message_id, last_thread_id, config, created_at, pending_fresh, context_revision, route_revision, retired_at, history_start_message_id, history_end_message_id, history_boundary_pending FROM binding
+`
+
+type CreateChannelChatSessionBindingForExistingSessionParams struct {
+	ChatSessionID  pgtype.UUID `json:"chat_session_id"`
+	InstallationID pgtype.UUID `json:"installation_id"`
+	ChannelType    string      `json:"channel_type"`
+	ChannelChatID  string      `json:"channel_chat_id"`
+	ChatType       string      `json:"chat_type"`
+	Config         []byte      `json:"config"`
+}
+
+type CreateChannelChatSessionBindingForExistingSessionRow struct {
+	ID                     pgtype.UUID        `json:"id"`
+	ChatSessionID          pgtype.UUID        `json:"chat_session_id"`
+	InstallationID         pgtype.UUID        `json:"installation_id"`
+	ChannelType            string             `json:"channel_type"`
+	ChannelChatID          string             `json:"channel_chat_id"`
+	ChatType               string             `json:"chat_type"`
+	LastMessageID          pgtype.Text        `json:"last_message_id"`
+	LastThreadID           pgtype.Text        `json:"last_thread_id"`
+	Config                 []byte             `json:"config"`
+	CreatedAt              pgtype.Timestamptz `json:"created_at"`
+	PendingFresh           bool               `json:"pending_fresh"`
+	ContextRevision        int64              `json:"context_revision"`
+	RouteRevision          int64              `json:"route_revision"`
+	RetiredAt              pgtype.Timestamptz `json:"retired_at"`
+	HistoryStartMessageID  pgtype.Text        `json:"history_start_message_id"`
+	HistoryEndMessageID    pgtype.Text        `json:"history_end_message_id"`
+	HistoryBoundaryPending bool               `json:"history_boundary_pending"`
+}
+
+// Explicit bind of an EXISTING chat session (the wecomwebhook announce flow:
+// a session created in the web UI gets pushed to a group robot). Unlike the
+// inbound EnsureSession path the session already exists and may carry retired
+// binding generations and prior context generations, so BOTH revisions are
+// computed here instead of defaulted: route_revision per
+// (installation_id, channel_chat_id), context_revision per session — it must
+// exceed every prior generation of this session or the generation-table
+// insert trips its (chat_session_id, revision) unique index.
+func (q *Queries) CreateChannelChatSessionBindingForExistingSession(ctx context.Context, arg CreateChannelChatSessionBindingForExistingSessionParams) (CreateChannelChatSessionBindingForExistingSessionRow, error) {
+	row := q.db.QueryRow(ctx, createChannelChatSessionBindingForExistingSession,
+		arg.ChatSessionID,
+		arg.InstallationID,
+		arg.ChannelType,
+		arg.ChannelChatID,
+		arg.ChatType,
+		arg.Config,
+	)
+	var i CreateChannelChatSessionBindingForExistingSessionRow
+	err := row.Scan(
+		&i.ID,
+		&i.ChatSessionID,
+		&i.InstallationID,
+		&i.ChannelType,
+		&i.ChannelChatID,
+		&i.ChatType,
+		&i.LastMessageID,
+		&i.LastThreadID,
+		&i.Config,
+		&i.CreatedAt,
+		&i.PendingFresh,
+		&i.ContextRevision,
+		&i.RouteRevision,
+		&i.RetiredAt,
+		&i.HistoryStartMessageID,
+		&i.HistoryEndMessageID,
+		&i.HistoryBoundaryPending,
+	)
+	return i, err
+}
+
 const createChannelChatSessionBindingGeneration = `-- name: CreateChannelChatSessionBindingGeneration :one
 WITH next_route AS (
     SELECT GREATEST(
