@@ -47,7 +47,7 @@ The WeCom group-robot webhook is an outbound-only channel: it posts a message in
 
 Installation differs from the interactive Bots: a workspace admin creates a group robot in the WeCom group settings, pastes its webhook key into Multica under Settings → Channels, and Multica verifies the key by really posting a test message into the group. Each webhook is bound to one agent.
 
-After installing, open a chat in Multica and use the ⋯ menu's "Push to WeCom group" entry to bind the chat to a webhook. From then on, when a turn in that chat finishes, fails, or is cancelled, the outcome is announced in the group. Announcements render agent replies in the WeCom markdown subset: headings, bold, links, inline code, quotes, and font colors; lists, tables, code blocks, and images are degraded. Long replies are split into multiple messages, and each robot accepts at most 20 messages per minute. Unbinding the chat stops its announcements; disconnecting the webhook stops all of them.
+After installing, open a chat in Multica and use the ⋯ menu's "Push to WeCom group" entry to bind the chat to a webhook. From then on, the group sees a one-line status when a run starts or completes, along with the turn's replies and failure or cancellation notices; consecutive status lines within a few seconds collapse into one. Announcements render agent replies in the WeCom markdown subset: headings, bold, links, inline code, quotes, and font colors; lists, tables, code blocks, and images are degraded. Long replies are split into multiple messages, and each robot accepts at most 20 messages per minute. Unbinding the chat stops its announcements; disconnecting the webhook stops all of them.
 
 ## How a message is processed
 
