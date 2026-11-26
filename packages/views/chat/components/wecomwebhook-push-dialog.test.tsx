@@ -4,7 +4,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nProvider } from "@multica/core/i18n/react";
-import { toast } from "sonner";
 import type { ChatSession } from "@multica/core/types";
 import enChat from "../../locales/en/chat.json";
 import enCommon from "../../locales/en/common.json";
