@@ -25,6 +25,7 @@ type fakeInstallQueries struct {
 	upsertCalls int
 	upsertErr   error
 	reclaimed   int
+	configSet   db.SetChannelInstallationConfigParams
 }
 
 func (f *fakeInstallQueries) WithTx(pgx.Tx) installQueries { return f }
@@ -56,6 +57,11 @@ func (f *fakeInstallQueries) GetChannelInstallationInWorkspace(_ context.Context
 }
 
 func (f *fakeInstallQueries) SetChannelInstallationStatus(_ context.Context, _ db.SetChannelInstallationStatusParams) error {
+	return nil
+}
+
+func (f *fakeInstallQueries) SetChannelInstallationConfig(_ context.Context, arg db.SetChannelInstallationConfigParams) error {
+	f.configSet = arg
 	return nil
 }
 
@@ -234,16 +240,76 @@ func TestKeySuffix(t *testing.T) {
 	}
 }
 
-func TestInstallationKeySuffixFromConfig(t *testing.T) {
-	cfg, err := encodeInstallConfig("abcdefgh1234", []byte{1, 2, 3})
+func TestPublicConfigFromRaw(t *testing.T) {
+	off := false
+	cfg, err := encodeInstallConfig("abcdefgh1234", []byte{1, 2, 3}, nil)
 	if err != nil {
 		t.Fatalf("encode: %v", err)
 	}
-	suffix, err := InstallationKeySuffixFromConfig(cfg)
-	if err != nil || suffix != "1234" {
-		t.Fatalf("suffix = %q err = %v", suffix, err)
+	view := PublicConfigFromRaw(cfg)
+	if view.KeySuffix != "1234" || !view.AnnounceStatusChanges {
+		t.Fatalf("view = %+v, want suffix 1234 and toggle on (absent = on)", view)
 	}
-	if _, err := InstallationKeySuffixFromConfig([]byte("{bad")); err == nil {
-		t.Fatal("malformed config must error")
+	cfg, err = encodeInstallConfig("abcdefgh1234", []byte{1, 2, 3}, &off)
+	if err != nil {
+		t.Fatalf("encode: %v", err)
 	}
+	if view := PublicConfigFromRaw(cfg); view.AnnounceStatusChanges {
+		t.Fatal("stored false must read back false")
+	}
+	if view := PublicConfigFromRaw([]byte("{bad")); view.KeySuffix != "…" || !view.AnnounceStatusChanges {
+		t.Fatalf("malformed config must degrade to the placeholder view, got %+v", view)
+	}
+}
+
+func TestSetAnnounceStatusChangesRewritesConfig(t *testing.T) {
+	q := &fakeInstallQueries{}
+	svc, _ := newTestInstallService(t, NewSender(WithBaseURL("http://127.0.0.1:1")), q)
+	// GetInWorkspace returns ErrNoRows on the fake — inject the row.
+	svc.q = stubbedInstallQueries{q, db.ChannelInstallation{
+		ID: wsUUID(), WorkspaceID: wsUUID(), Status: "active",
+		Config: mustConfig(t, "abcdefgh1234", nil),
+	}}
+
+	row, err := svc.SetAnnounceStatusChanges(context.Background(), wsUUID(), wsUUID(), false)
+	if err != nil {
+		t.Fatalf("SetAnnounceStatusChanges: %v", err)
+	}
+	if q.configSet.ID != wsUUID() {
+		t.Fatal("config write must target the installation")
+	}
+	var cfg installConfig
+	if err := json.Unmarshal(q.configSet.Config, &cfg); err != nil {
+		t.Fatalf("decode written config: %v", err)
+	}
+	if cfg.AnnounceStatusChanges == nil || *cfg.AnnounceStatusChanges {
+		t.Fatal("toggle off must be stored as an explicit false")
+	}
+	if cfg.AppID != "abcdefgh1234" || len(cfg.KeyEncrypted) == 0 {
+		t.Fatal("the rest of the config blob must survive the rewrite")
+	}
+	if row.Config == nil {
+		t.Fatal("returned row must carry the updated config")
+	}
+}
+
+func mustConfig(t *testing.T, key string, announce *bool) []byte {
+	t.Helper()
+	// The sealed bytes are fake here; only the JSON shape matters.
+	raw, err := json.Marshal(installConfig{AppID: key, KeyEncrypted: []byte{1}, AnnounceStatusChanges: announce})
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	return raw
+}
+
+// stubbedInstallQueries overrides GetChannelInstallationInWorkspace with a
+// fixed row for the config-patch flow.
+type stubbedInstallQueries struct {
+	*fakeInstallQueries
+	row db.ChannelInstallation
+}
+
+func (s stubbedInstallQueries) GetChannelInstallationInWorkspace(_ context.Context, _ db.GetChannelInstallationInWorkspaceParams) (db.ChannelInstallation, error) {
+	return s.row, nil
 }

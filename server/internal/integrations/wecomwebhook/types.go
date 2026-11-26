@@ -68,6 +68,11 @@ type Installation struct {
 	// KeySuffix is the last 4 characters of the key, safe to render in UIs so
 	// an operator can tell two webhooks apart without exposing either.
 	KeySuffix string
+
+	// AnnounceStatusChanges is the installation-level switch for the
+	// notify-system issue status_changed push. Default ON when the stored
+	// config predates the toggle.
+	AnnounceStatusChanges bool
 }
 
 // installConfig is the on-disk (JSONB) shape of channel_installation.config
@@ -85,11 +90,23 @@ type Installation struct {
 type installConfig struct {
 	AppID        string `json:"app_id"`
 	KeyEncrypted []byte `json:"key_encrypted"`
+
+	// AnnounceStatusChanges gates the notify-system issue status_changed push
+	// (installation-level master switch, NOT per-user preference). Pointer so
+	// absent means nil → default ON: a group robot was installed to watch the
+	// workspace's work, and an older config blob predating the toggle must
+	// not silently go quiet. nil is the stored form for "on".
+	AnnounceStatusChanges *bool `json:"announce_status_changes,omitempty"`
+}
+
+// announceOn renders the stored toggle; absent means on.
+func (c installConfig) announceOn() bool {
+	return c.AnnounceStatusChanges == nil || *c.AnnounceStatusChanges
 }
 
 // encodeInstallConfig marshals an Installation's config-bearing fields into
 // the JSONB blob stored in channel_installation.config.
-func encodeInstallConfig(key string, keyEncrypted []byte) ([]byte, error) {
+func encodeInstallConfig(key string, keyEncrypted []byte, announceStatusChanges *bool) ([]byte, error) {
 	if key == "" {
 		return nil, errors.New("wecomwebhook: key is required")
 	}
@@ -97,8 +114,9 @@ func encodeInstallConfig(key string, keyEncrypted []byte) ([]byte, error) {
 		return nil, errors.New("wecomwebhook: sealed key is required")
 	}
 	return json.Marshal(installConfig{
-		AppID:        key,
-		KeyEncrypted: keyEncrypted,
+		AppID:                 key,
+		KeyEncrypted:          keyEncrypted,
+		AnnounceStatusChanges: announceStatusChanges,
 	})
 }
 
@@ -115,12 +133,13 @@ func installationFromRow(row db.ChannelInstallation, open func([]byte) ([]byte, 
 		}
 	}
 	inst := Installation{
-		ID:              row.ID,
-		WorkspaceID:     row.WorkspaceID,
-		AgentID:         row.AgentID,
-		InstallerUserID: row.InstallerUserID,
-		Status:          InstallationStatus(row.Status),
-		KeySuffix:       keySuffix(cfg.AppID),
+		ID:                    row.ID,
+		WorkspaceID:           row.WorkspaceID,
+		AgentID:               row.AgentID,
+		InstallerUserID:       row.InstallerUserID,
+		Status:                InstallationStatus(row.Status),
+		KeySuffix:             keySuffix(cfg.AppID),
+		AnnounceStatusChanges: cfg.announceOn(),
 	}
 	if len(cfg.KeyEncrypted) > 0 && open != nil {
 		plain, err := open(cfg.KeyEncrypted)
@@ -142,7 +161,7 @@ func installationFromConfig(raw json.RawMessage, open func([]byte) ([]byte, erro
 			return Installation{}, fmt.Errorf("wecomwebhook: decode installation config: %w", err)
 		}
 	}
-	inst := Installation{KeySuffix: keySuffix(cfg.AppID)}
+	inst := Installation{KeySuffix: keySuffix(cfg.AppID), AnnounceStatusChanges: cfg.announceOn()}
 	if len(cfg.KeyEncrypted) > 0 && open != nil {
 		plain, err := open(cfg.KeyEncrypted)
 		if err != nil {
@@ -162,15 +181,24 @@ func keySuffix(key string) string {
 	return key[len(key)-4:]
 }
 
-// InstallationKeySuffixFromConfig renders the masked key suffix from a raw
-// channel_installation config blob, for HTTP responses. The full key never
-// crosses the API boundary; this is the only piece of it that does.
-func InstallationKeySuffixFromConfig(raw json.RawMessage) (string, error) {
+// PublicConfigView is the API-safe projection of a config blob: the masked
+// key suffix and the announce toggle. The full key never crosses the API
+// boundary; these two are the only pieces of the config that do.
+type PublicConfigView struct {
+	KeySuffix             string
+	AnnounceStatusChanges bool
+}
+
+// PublicConfigFromRaw decodes a raw channel_installation config blob into the
+// API-safe view. A malformed blob yields the "…" suffix with the default
+// toggle — a display projection is never worth failing a list call over.
+func PublicConfigFromRaw(raw json.RawMessage) PublicConfigView {
 	var cfg installConfig
 	if len(raw) > 0 {
-		if err := json.Unmarshal(raw, &cfg); err != nil {
-			return "", fmt.Errorf("wecomwebhook: decode installation config: %w", err)
-		}
+		_ = json.Unmarshal(raw, &cfg)
 	}
-	return keySuffix(cfg.AppID), nil
+	return PublicConfigView{
+		KeySuffix:             keySuffix(cfg.AppID),
+		AnnounceStatusChanges: cfg.announceOn(),
+	}
 }

@@ -1321,6 +1321,10 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				} else {
 					wecomWebhookOutbound.SetStatusWindow(wecomWebhookStatusWindow())
 					wecomWebhookOutbound.Register(bus)
+					// The notify-system hook shares this Outbound so the
+					// status_changed push and the run lifecycle lines land in
+					// the same merge window (one message per work item).
+					h.WecomWebhookStatusAnnouncer = wecomWebhookOutbound
 				}
 
 				wecomWebhookInstall, instErr := wecomwebhook.NewInstallService(queries, pool, wecomWebhookBox, wecomWebhookSender, slog.Default())
@@ -2196,6 +2200,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 					r.Use(middleware.RequireWorkspaceRoleFromURL(queries, "id", "owner", "admin"))
 					r.Delete("/wecomwebhook/installations/{installationId}", h.RevokeWecomWebhookInstallation)
 					r.Post("/wecomwebhook/install", h.RegisterWecomWebhook)
+					r.Put("/wecomwebhook/installations/{installationId}/announce-status", h.SetWecomWebhookAnnounceStatus)
 				})
 			})
 		})

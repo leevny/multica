@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/events"
@@ -869,7 +870,42 @@ func notifyMentionedMembers(
 // NOTE: uses context.Background() because the event bus dispatches synchronously
 // within the HTTP request goroutine. Adding per-handler timeouts is a bus-level
 // concern — see events.Bus for future improvements.
-func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
+// statusAnnouncer is the wecomwebhook notify-system hook. Nil when the
+// integration is off (no MULTICA_WECOM_WEBHOOK_SECRET_KEY): the status
+// change then reaches the group robot nowhere, by design.
+type statusAnnouncer interface {
+	AnnounceIssueStatusChange(ctx context.Context, workspaceID, issueID, issueTitle, from, to string)
+}
+
+// deferredStatusAnnouncer hands the listeners a stable announcer before the
+// Handler exists: listeners register before NewRouterWithOptions builds the
+// wecomwebhook outbound, and bus events cannot fire until the server serves,
+// so the wiring fills the holder in between — but the listener needs its
+// parameter at registration time. A nil delegate (integration off, or the
+// gap during boot) drops the announcement silently; the outbound logs its
+// own skips once wired.
+type deferredStatusAnnouncer struct {
+	mu       sync.Mutex
+	delegate statusAnnouncer
+}
+
+func (d *deferredStatusAnnouncer) set(a statusAnnouncer) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.delegate = a
+}
+
+func (d *deferredStatusAnnouncer) AnnounceIssueStatusChange(ctx context.Context, workspaceID, issueID, issueTitle, from, to string) {
+	d.mu.Lock()
+	a := d.delegate
+	d.mu.Unlock()
+	if a == nil {
+		return
+	}
+	a.AnnounceIssueStatusChange(ctx, workspaceID, issueID, issueTitle, from, to)
+}
+
+func registerNotificationListeners(bus *events.Bus, queries *db.Queries, wecomWebhookStatus statusAnnouncer) {
 	ctx := context.Background()
 
 	// issue:created — Direct notification to assignee if assignee != actor
@@ -1010,6 +1046,16 @@ func registerNotificationListeners(bus *events.Bus, queries *db.Queries) {
 				nil, "status_changed", "info",
 				issue.Title, "",
 				statusDetails)
+
+			// The wecomwebhook group-robot push: ONE call per status change
+			// event, here at notifySubscribers' level - never inside the
+			// per-recipient loop, which would send one message per subscriber.
+			// The announcer resolves the workspace's installations itself and
+			// no-ops (logged) when none are usable; the installation-level
+			// toggle is its gate, not user notification preferences.
+			if wecomWebhookStatus != nil {
+				wecomWebhookStatus.AnnounceIssueStatusChange(ctx, e.WorkspaceID, issue.ID, issue.Title, prevStatus, issue.Status)
+			}
 
 			// When the issue progresses past the failure, retire any stale
 			// task_failed inbox rows so the inbox reflects the current state of

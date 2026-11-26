@@ -615,7 +615,12 @@ func main() {
 	// so subscribers must be written first within the same synchronous event dispatch.
 	registerSubscriberListeners(bus, pool)
 	registerActivityListeners(bus, queries)
-	registerNotificationListeners(bus, queries)
+	// The wecomwebhook status announcer is deferred: the listener registers
+	// before the router builds the outbound, and the wiring fills the holder
+	// right after. Events cannot fire until the server serves, so the gap is
+	// boot-only.
+	wecomWebhookStatus := &deferredStatusAnnouncer{}
+	registerNotificationListeners(bus, queries, wecomWebhookStatus)
 	registerChatReplyNotifications(bus, broadcaster, &membershipChecker{queries: queries})
 	registerIssueUnreadListeners(bus, queries)
 	inboxTrimmer := inbox.NewTrimmer(queries, bus)
@@ -702,6 +707,11 @@ func main() {
 		LLMMaxRetries:       llmMaxRetries,
 		LLMDisableThinking:  llmDisableThinking,
 	})
+	// The wecomwebhook status announcer's delegate is now real: the router
+	// wiring built the outbound, and bus events cannot fire until the server
+	// serves, so nothing was announced into the boot-time gap.
+	wecomWebhookStatus.set(h.WecomWebhookStatusAnnouncer)
+
 	// member_delegation_day exists only for self-host telemetry; DO_NOT_TRACK
 	// stops writing it as well as sending the snapshot.
 	h.TaskService.RecordMemberActivity = telemetryConfig.Enabled

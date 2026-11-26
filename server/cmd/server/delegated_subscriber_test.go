@@ -666,7 +666,7 @@ func TestDelegatedIssueCreated_NotifiesTheHumanOwner(t *testing.T) {
 		t.Helper()
 		bus := events.New()
 		registerSubscriberListeners(bus, testPool)
-		registerNotificationListeners(bus, queries)
+		registerNotificationListeners(bus, queries, nil)
 		inboxNew := 0
 		bus.Subscribe(protocol.EventInboxNew, func(e events.Event) {
 			item, _ := e.Payload.(map[string]any)["item"].(map[string]any)

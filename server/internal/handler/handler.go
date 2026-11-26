@@ -427,6 +427,10 @@ type Handler struct {
 	// WecomWebhookBindings writes the explicit chat_session → webhook
 	// binding the announce path resolves. Nil alongside WecomWebhookInstall.
 	WecomWebhookBindings *wecomwebhook.BindingService
+	// WecomWebhookStatusAnnouncer is the notify-system hook: ONE call per
+	// issue status_changed event pushes the change to the workspace's
+	// active wecomwebhook installations. Nil when the integration is off.
+	WecomWebhookStatusAnnouncer wecomwebhook.IssueStatusAnnouncer
 
 	// channelFileDelivery names the channel types that can, IN THIS
 	// DEPLOYMENT, carry a file the agent produced the last hop into the

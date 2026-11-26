@@ -94,11 +94,7 @@ func newBus(t *testing.T, o *Outbound) *events.Bus {
 }
 
 func totalMessages(sender *recordingSender) int {
-	n := 0
-	for _, chunks := range sender.snapshot() {
-		n += len(chunks)
-	}
-	return n
+	return len(sender.snapshot())
 }
 
 func TestStatusVerbsMapping(t *testing.T) {
@@ -158,7 +154,7 @@ func TestStatusEventsCoalesceLastWins(t *testing.T) {
 	if totalMessages(sender) != 1 {
 		t.Fatalf("want exactly one coalesced line, got %d", totalMessages(sender))
 	}
-	line := sender.snapshot()[0][0]
+	line := sender.snapshot()[0].content
 	if !strings.Contains(line, "开始执行") || strings.Contains(line, "已入队") {
 		t.Fatalf("last state must win, got %q", line)
 	}
@@ -184,7 +180,7 @@ func TestStatusLineMergesIntoChatDoneReply(t *testing.T) {
 	if totalMessages(sender) != 1 {
 		t.Fatalf("status line must merge into the reply, got %d messages", totalMessages(sender))
 	}
-	msg := strings.Join(sender.snapshot()[0], "")
+	msg := sender.snapshot()[0].content
 	if !strings.Contains(msg, "开始执行") || !strings.Contains(msg, "答复内容") {
 		t.Fatalf("merged message missing status prefix or reply: %q", msg)
 	}
@@ -235,7 +231,7 @@ func TestCompletedAnnouncesWhenNoReply(t *testing.T) {
 	}
 	pubStatus(bus, protocol.EventTaskCompleted, "t1")
 	time.Sleep(250 * time.Millisecond)
-	if totalMessages(sender) != 1 || !strings.Contains(sender.snapshot()[0][0], "已完成") {
+	if totalMessages(sender) != 1 || !strings.Contains(sender.snapshot()[0].content, "已完成") {
 		t.Fatalf("completed must announce when no terminal message went out, got %v", sender.snapshot())
 	}
 }
@@ -307,7 +303,7 @@ func TestWindowReplacesHeldLine(t *testing.T) {
 	if totalMessages(sender) != 2 {
 		t.Fatalf("want one flush per window close, got %d", totalMessages(sender))
 	}
-	if !strings.Contains(sender.snapshot()[1][0], "已完成") {
-		t.Fatalf("second window must carry the later state: %q", sender.snapshot()[1][0])
+	if !strings.Contains(sender.snapshot()[1].content, "已完成") {
+		t.Fatalf("second window must carry the later state: %q", sender.snapshot()[1].content)
 	}
 }

@@ -17,6 +17,7 @@ package wecomwebhook
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -74,6 +75,7 @@ type installQueries interface {
 	ListChannelInstallationsByWorkspace(ctx context.Context, arg db.ListChannelInstallationsByWorkspaceParams) ([]db.ChannelInstallation, error)
 	GetChannelInstallationInWorkspace(ctx context.Context, arg db.GetChannelInstallationInWorkspaceParams) (db.ChannelInstallation, error)
 	SetChannelInstallationStatus(ctx context.Context, arg db.SetChannelInstallationStatusParams) error
+	SetChannelInstallationConfig(ctx context.Context, arg db.SetChannelInstallationConfigParams) error
 }
 
 type dbInstallQueries struct{ *db.Queries }
@@ -128,12 +130,14 @@ func newInstallService(q installQueries, tx engine.TxStarter, box *secretbox.Box
 }
 
 // RegisterParams are the inputs for a webhook install: the agent this webhook
-// announces for, who is installing, and the pasted key.
+// announces for, who is installing, and the pasted key. AnnounceStatusChanges
+// is the installation-level status-push toggle; nil means default ON.
 type RegisterParams struct {
-	WorkspaceID pgtype.UUID
-	AgentID     pgtype.UUID
-	InitiatorID pgtype.UUID
-	Key         string
+	WorkspaceID           pgtype.UUID
+	AgentID               pgtype.UUID
+	InitiatorID           pgtype.UUID
+	Key                   string
+	AnnounceStatusChanges *bool
 }
 
 // Register installs a user-supplied group-robot webhook for an agent: shape
@@ -162,7 +166,7 @@ func (s *InstallService) Register(ctx context.Context, p RegisterParams) (db.Cha
 	if err != nil {
 		return db.ChannelInstallation{}, fmt.Errorf("wecomwebhook: encrypt key: %w", err)
 	}
-	cfgJSON, err := encodeInstallConfig(key, sealed)
+	cfgJSON, err := encodeInstallConfig(key, sealed, p.AnnounceStatusChanges)
 	if err != nil {
 		return db.ChannelInstallation{}, err
 	}
@@ -315,4 +319,35 @@ func (s *InstallService) Revoke(ctx context.Context, id pgtype.UUID) error {
 		ID:     id,
 		Status: string(InstallationRevoked),
 	})
+}
+
+// SetAnnounceStatusChanges flips the installation's status-push toggle
+// without re-verifying the key — the key was proven at install time, and a
+// preference flip is not a credential change. Config is read, patched, and
+// rewritten whole (the blob carries the sealed key; no field-level JSONB
+// patch touches it).
+func (s *InstallService) SetAnnounceStatusChanges(ctx context.Context, id, workspaceID pgtype.UUID, enabled bool) (db.ChannelInstallation, error) {
+	row, err := s.GetInWorkspace(ctx, id, workspaceID)
+	if err != nil {
+		return db.ChannelInstallation{}, err
+	}
+	var cfg installConfig
+	if len(row.Config) > 0 {
+		if err := json.Unmarshal(row.Config, &cfg); err != nil {
+			return db.ChannelInstallation{}, fmt.Errorf("wecomwebhook: decode installation config: %w", err)
+		}
+	}
+	cfg.AnnounceStatusChanges = &enabled
+	updated, err := json.Marshal(cfg)
+	if err != nil {
+		return db.ChannelInstallation{}, fmt.Errorf("wecomwebhook: encode installation config: %w", err)
+	}
+	if err := s.q.SetChannelInstallationConfig(ctx, db.SetChannelInstallationConfigParams{
+		ID:     row.ID,
+		Config: updated,
+	}); err != nil {
+		return db.ChannelInstallation{}, fmt.Errorf("wecomwebhook: set announce toggle: %w", err)
+	}
+	row.Config = updated
+	return row, nil
 }

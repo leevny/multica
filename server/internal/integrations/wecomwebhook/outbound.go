@@ -92,6 +92,12 @@ const (
 	skipInstallationMissing  = "installation_missing"
 	skipInstallationInactive = "installation_not_active"
 	skipKeyUnavailable       = "key_unavailable"
+	// Status-push (notify-system) skips. The structural default - a
+	// workspace with no robot - logs at DEBUG; an installation that exists
+	// but cannot deliver logs at INFO, the "why isn't my robot announcing"
+	// case.
+	skipNoActiveInstallation = "no_active_installation"
+	skipAnnounceDisabled     = "announce_disabled"
 )
 
 // outboundQueries is the slice of generated queries the announce path needs.
@@ -99,6 +105,7 @@ type outboundQueries interface {
 	GetChannelChatSessionBindingBySession(ctx context.Context, arg db.GetChannelChatSessionBindingBySessionParams) (db.ChannelChatSessionBinding, error)
 	GetChannelInstallation(ctx context.Context, arg db.GetChannelInstallationParams) (db.ChannelInstallation, error)
 	GetChatSession(ctx context.Context, id pgtype.UUID) (db.ChatSession, error)
+	ListChannelInstallationsByWorkspace(ctx context.Context, arg db.ListChannelInstallationsByWorkspaceParams) ([]db.ChannelInstallation, error)
 }
 
 // messageSender is the send surface the announcer needs. *Sender satisfies
@@ -120,9 +127,18 @@ type destination struct {
 // bumps it, so an AfterFunc from a superseded event finds a mismatch and
 // exits.
 type pendingStatus struct {
-	gen  uint64
-	line string
-	dest destination
+	gen      uint64
+	line     string
+	dests    []destination
+	issueKey string
+}
+
+// IssueStatusAnnouncer is the notify-system hook the notification listeners
+// call: ONE invocation per issue:updated status change, never per recipient.
+// *Outbound implements it; the interface keeps cmd/server's listener wiring
+// testable without the integration.
+type IssueStatusAnnouncer interface {
+	AnnounceIssueStatusChange(ctx context.Context, workspaceID, issueID, issueTitle, from, to string)
 }
 
 // Outbound announces task lifecycle and terminal outcomes to bound WeCom
@@ -195,6 +211,7 @@ func (o *Outbound) Register(bus *events.Bus) {
 // without per-event branches.
 type terminalPayload struct {
 	TaskID        string `json:"task_id"`
+	IssueID       string `json:"issue_id"`
 	ChatSessionID string `json:"chat_session_id"`
 	Content       string `json:"content"`
 	MessageKind   string `json:"message_kind"`
@@ -243,7 +260,7 @@ func (o *Outbound) processStatusEvent(ctx context.Context, e events.Event, p ter
 			"reason", skipNoChatSession, "event", e.Type, "task_id", taskID)
 		return nil
 	}
-	dest, skip, err := o.resolveDestination(ctx, sessionID)
+	dests, skip, err := o.resolveDestination(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -252,7 +269,14 @@ func (o *Outbound) processStatusEvent(ctx context.Context, e events.Event, p ter
 		return nil
 	}
 	line := fmt.Sprintf("**「%s」%s**", o.sessionTitle(ctx, sessionID), verb)
-	o.holdStatus(taskID, line, dest)
+	// A completed line for a linked issue participates in the issue's merge
+	// window, so the notify-system status_changed for the same work item
+	// cannot double-announce the completion (see holdStatus).
+	linked := ""
+	if e.Type == protocol.EventTaskCompleted && p.IssueID != "" {
+		linked = "issue:" + p.IssueID
+	}
+	o.holdStatus(taskID, line, dests, linked)
 	return nil
 }
 
@@ -264,7 +288,7 @@ func (o *Outbound) processTerminalEvent(ctx context.Context, e events.Event, p t
 			"reason", skipNoChatSession, "event", e.Type, "task_id", taskID)
 		return nil
 	}
-	dest, skip, err := o.resolveDestination(ctx, sessionID)
+	dests, skip, err := o.resolveDestination(ctx, sessionID)
 	if err != nil {
 		return err
 	}
@@ -286,23 +310,22 @@ func (o *Outbound) processTerminalEvent(ctx context.Context, e events.Event, p t
 	if prefix := o.popStatus(taskID); prefix != "" {
 		message = prefix + "\n" + message
 	}
-	ids, err := o.sender.SendMarkdown(ctx, dest.key, message)
-	if err != nil {
-		return fmt.Errorf("announce to group (key suffix %s): %w", dest.keySuffix, err)
+	if err := o.sendToAll(ctx, dests, message); err != nil {
+		return err
 	}
 	o.markTerminal(taskID)
 	o.logger.DebugContext(ctx, "wecomwebhook: announced",
-		"event", e.Type, "chat_session_id", sessionID, "messages", len(ids))
+		"event", e.Type, "chat_session_id", sessionID)
 	return nil
 }
 
 // resolveDestination resolves session → binding → installation → key.
 // A non-empty skip reason means the announcement cannot go out and the caller
 // should log and move on.
-func (o *Outbound) resolveDestination(ctx context.Context, sessionID string) (destination, string, error) {
+func (o *Outbound) resolveDestination(ctx context.Context, sessionID string) ([]destination, string, error) {
 	sessionUUID, err := parseSessionUUID(sessionID)
 	if err != nil {
-		return destination{}, skipNoBinding, nil
+		return nil, skipNoBinding, nil
 	}
 	binding, err := o.q.GetChannelChatSessionBindingBySession(ctx, db.GetChannelChatSessionBindingBySessionParams{
 		ChatSessionID: sessionUUID,
@@ -310,9 +333,9 @@ func (o *Outbound) resolveDestination(ctx context.Context, sessionID string) (de
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return destination{}, skipNoBinding, nil
+			return nil, skipNoBinding, nil
 		}
-		return destination{}, "", fmt.Errorf("resolve binding: %w", err)
+		return nil, "", fmt.Errorf("resolve binding: %w", err)
 	}
 	inst, err := o.q.GetChannelInstallation(ctx, db.GetChannelInstallationParams{
 		ID:          binding.InstallationID,
@@ -320,21 +343,122 @@ func (o *Outbound) resolveDestination(ctx context.Context, sessionID string) (de
 	})
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return destination{}, skipInstallationMissing, nil
+			return nil, skipInstallationMissing, nil
 		}
-		return destination{}, "", fmt.Errorf("load installation: %w", err)
+		return nil, "", fmt.Errorf("load installation: %w", err)
 	}
 	if inst.Status != string(InstallationActive) {
-		return destination{}, skipInstallationInactive, nil
+		return nil, skipInstallationInactive, nil
 	}
 	installation, err := installationFromRow(inst, o.open)
 	if err != nil {
-		return destination{}, "", err
+		return nil, "", err
 	}
 	if installation.Key == "" {
-		return destination{}, skipKeyUnavailable, nil
+		return nil, skipKeyUnavailable, nil
 	}
-	return destination{key: installation.Key, keySuffix: installation.KeySuffix}, "", nil
+	return []destination{{key: installation.Key, keySuffix: installation.KeySuffix}}, "", nil
+}
+
+// sendToAll delivers one message to every destination. Keys fail
+// independently - one group's refusal must not cost the others - and the
+// first error surfaces after every destination got its chance.
+func (o *Outbound) sendToAll(ctx context.Context, dests []destination, message string) error {
+	var firstErr error
+	for _, dest := range dests {
+		if _, err := o.sender.SendMarkdown(ctx, dest.key, message); err != nil {
+			wrapped := fmt.Errorf("announce to group (key suffix %s): %w", dest.keySuffix, err)
+			if firstErr == nil {
+				firstErr = wrapped
+			}
+		}
+	}
+	return firstErr
+}
+
+// AnnounceIssueStatusChange is the notify-system hook (the
+// IssueStatusAnnouncer implementation): ONE call per issue:updated status
+// change, from notifySubscribers' statusChanged branch - never per
+// recipient. It pushes "「issue title」status: from -> to" to every active,
+// toggle-on installation in the workspace (installation -> key, direct; no
+// binding layer), through the same sender and the same merge window the run
+// lifecycle announcements use, so a task:completed for the same issue and
+// this status line collapse into one message (last arrival wins).
+func (o *Outbound) AnnounceIssueStatusChange(ctx context.Context, workspaceID, issueID, issueTitle, from, to string) {
+	wsUUID, err := parseUUID(workspaceID)
+	if err != nil {
+		o.logger.ErrorContext(ctx, "wecomwebhook: status announce failed",
+			"reason", "bad_workspace_id", "workspace_id", workspaceID, "issue_id", issueID, "error", err)
+		return
+	}
+	rows, err := o.q.ListChannelInstallationsByWorkspace(ctx, db.ListChannelInstallationsByWorkspaceParams{
+		WorkspaceID: wsUUID,
+		ChannelType: channelTypeWecomWebhook,
+	})
+	if err != nil {
+		o.logger.ErrorContext(ctx, "wecomwebhook: status announce failed",
+			"workspace_id", workspaceID, "issue_id", issueID,
+			"error", fmt.Errorf("list installations: %w", err))
+		return
+	}
+	var dests []destination
+	firstSkip := ""
+	for _, row := range rows {
+		if row.Status != string(InstallationActive) {
+			firstSkip = firstSkipOr(firstSkip, skipInstallationInactive)
+			continue
+		}
+		inst, err := installationFromRow(row, o.open)
+		if err != nil {
+			o.logger.DebugContext(ctx, "wecomwebhook: status destination unusable",
+				"reason", "config_unreadable", "installation_id", row.ID.String(), "error", err)
+			firstSkip = firstSkipOr(firstSkip, skipKeyUnavailable)
+			continue
+		}
+		if !inst.AnnounceStatusChanges {
+			firstSkip = firstSkipOr(firstSkip, skipAnnounceDisabled)
+			o.logger.DebugContext(ctx, "wecomwebhook: status destination skipped",
+				"reason", skipAnnounceDisabled, "installation_id", row.ID.String(),
+				"workspace_id", workspaceID, "issue_id", issueID)
+			continue
+		}
+		if inst.Key == "" {
+			firstSkip = firstSkipOr(firstSkip, skipKeyUnavailable)
+			continue
+		}
+		dests = append(dests, destination{key: inst.Key, keySuffix: inst.KeySuffix})
+	}
+	if len(dests) == 0 {
+		reason := firstSkip
+		if reason == "" {
+			reason = skipNoActiveInstallation
+		}
+		level := slog.LevelInfo
+		if reason == skipNoActiveInstallation {
+			// The structural default: no robot in this workspace. Visible,
+			// but not worth an INFO line per status change forever.
+			level = slog.LevelDebug
+		}
+		o.logger.Log(ctx, level, "wecomwebhook: announcement skipped",
+			"reason", reason, "event", "issue_status_changed",
+			"workspace_id", workspaceID, "issue_id", issueID)
+		return
+	}
+	title := strings.TrimSpace(issueTitle)
+	if title == "" {
+		title = "Issue"
+	}
+	line := fmt.Sprintf("**「%s」状态：%s → %s**", title, from, to)
+	o.holdStatus("issue:"+issueID, line, dests, "issue:"+issueID)
+}
+
+// firstSkipOr keeps the first (most specific) skip reason for the summary
+// line when no destination was usable.
+func firstSkipOr(current, candidate string) string {
+	if current != "" {
+		return current
+	}
+	return candidate
 }
 
 // sessionTitle reads the chat session's title for the status line. An empty
@@ -360,21 +484,56 @@ func (o *Outbound) logSkip(ctx context.Context, eventType, sessionID, taskID, re
 		"reason", reason, "event", eventType, "chat_session_id", sessionID, "task_id", taskID)
 }
 
-// holdStatus records (or replaces) the task's held status line and restarts
-// its window. Last event wins; the replaced entry's timer self-invalidates
+// holdStatus records (or replaces) a held status line and restarts its
+// window. Last event wins; the replaced entry's timer self-invalidates
 // through the gen bump.
-func (o *Outbound) holdStatus(taskID, line string, dest destination) {
+//
+// linkedKey merges the run-lifecycle and notify-system paths on one work
+// item: a task:completed line carries its issue key, and a status_changed
+// line IS its issue key. When the other side is already pending, the new
+// line replaces it in place (whichever arrived later wins) instead of
+// adding a second message about the same completion. Search order:
+//
+//   - pending[linkedKey]: a status_changed line (or a completed line that
+//     already replaced one) held under the issue key;
+//   - any entry whose issueKey matches: a pending task-completed line held
+//     under its task key.
+func (o *Outbound) holdStatus(key, line string, dests []destination, linkedKey string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if o.pending == nil {
 		o.pending = make(map[string]*pendingStatus)
 	}
+	if linkedKey != "" {
+		if held := o.pending[linkedKey]; held != nil {
+			o.replaceHeld(linkedKey, held, line, dests)
+			return
+		}
+		for k, held := range o.pending {
+			if held.issueKey == linkedKey {
+				o.replaceHeld(k, held, line, dests)
+				return
+			}
+		}
+	}
 	gen := uint64(1)
-	if held := o.pending[taskID]; held != nil {
+	if held := o.pending[key]; held != nil {
 		gen = held.gen + 1
 	}
-	o.pending[taskID] = &pendingStatus{gen: gen, line: line, dest: dest}
-	time.AfterFunc(o.statusWindow, func() { o.flushStatus(taskID, gen) })
+	issueKey := ""
+	if strings.HasPrefix(linkedKey, "issue:") {
+		issueKey = linkedKey
+	}
+	o.pending[key] = &pendingStatus{gen: gen, line: line, dests: dests, issueKey: issueKey}
+	time.AfterFunc(o.statusWindow, func() { o.flushStatus(key, gen) })
+}
+
+// replaceHeld overwrites a pending entry with the newer line, keeping the
+// entry's key, and restarts its window.
+func (o *Outbound) replaceHeld(key string, held *pendingStatus, line string, dests []destination) {
+	gen := held.gen + 1
+	o.pending[key] = &pendingStatus{gen: gen, line: line, dests: dests, issueKey: held.issueKey}
+	time.AfterFunc(o.statusWindow, func() { o.flushStatus(key, gen) })
 }
 
 // flushStatus sends the held line when its window closed without a replacing
@@ -393,15 +552,13 @@ func (o *Outbound) flushStatus(taskID string, gen uint64) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), busHandlerTimeout)
 	defer cancel()
-	ids, err := o.sender.SendMarkdown(ctx, held.dest.key, held.line)
-	if err != nil {
+	if err := o.sendToAll(ctx, held.dests, held.line); err != nil {
 		o.logger.ErrorContext(ctx, "wecomwebhook: announce failed",
-			"event", "status_window", "task_id", taskID,
-			"error", fmt.Errorf("announce to group (key suffix %s): %w", held.dest.keySuffix, err))
+			"event", "status_window", "task_id", taskID, "error", err)
 		return
 	}
 	o.logger.DebugContext(ctx, "wecomwebhook: announced",
-		"event", "status_window", "task_id", taskID, "messages", len(ids))
+		"event", "status_window", "task_id", taskID)
 }
 
 // popStatus removes and returns the task's held status line, if any.
@@ -472,6 +629,12 @@ func taskIDOf(e events.Event, p terminalPayload) string {
 		return e.TaskID
 	}
 	return p.TaskID
+}
+
+// parseUUID is parseSessionUUID without the chat-specific wording; the
+// notify-system path passes workspace and issue ids through it.
+func parseUUID(id string) (pgtype.UUID, error) {
+	return parseSessionUUID(id)
 }
 
 func parseSessionUUID(id string) (pgtype.UUID, error) {

@@ -17,11 +17,12 @@ import (
 
 // fakeOutboundQueries answers the reads the announce path makes.
 type fakeOutboundQueries struct {
-	binding      db.ChannelChatSessionBinding
-	bindingErr   error
-	inst         db.ChannelInstallation
-	instErr      error
-	sessionTitle string
+	binding       db.ChannelChatSessionBinding
+	bindingErr    error
+	inst          db.ChannelInstallation
+	instErr       error
+	sessionTitle  string
+	workspaceRows map[string][]db.ChannelInstallation
 }
 
 func (f *fakeOutboundQueries) GetChatSession(_ context.Context, id pgtype.UUID) (db.ChatSession, error) {
@@ -49,25 +50,37 @@ func (f *fakeOutboundQueries) GetChannelInstallation(_ context.Context, arg db.G
 	return f.inst, nil
 }
 
+// workspaceRows are the installations returned per workspace id, keyed by the
+// id string, so announcer tests exercise workspace isolation behaviorally.
+func (f *fakeOutboundQueries) ListChannelInstallationsByWorkspace(_ context.Context, arg db.ListChannelInstallationsByWorkspaceParams) ([]db.ChannelInstallation, error) {
+	return f.workspaceRows[arg.WorkspaceID.String()], nil
+}
+
+// sendCall is one SendMarkdown invocation: the destination key and content.
+type sendCall struct {
+	key     string
+	content string
+}
+
 // recordingSender captures announcements without touching the network. The
 // flush timers run on their own goroutines, so reads and writes are locked.
 type recordingSender struct {
-	mu       sync.Mutex
-	messages [][]string
+	mu    sync.Mutex
+	calls []sendCall
 }
 
-func (s *recordingSender) SendMarkdown(_ context.Context, _ string, content string) ([]string, error) {
+func (s *recordingSender) SendMarkdown(_ context.Context, key string, content string) ([]string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.messages = append(s.messages, chunkUTF8(content, MaxMarkdownBytes))
+	s.calls = append(s.calls, sendCall{key: key, content: content})
 	return []string{"id-1"}, nil
 }
 
-// snapshot returns a copy of the recorded announcements.
-func (s *recordingSender) snapshot() [][]string {
+// snapshot returns a copy of the recorded send calls.
+func (s *recordingSender) snapshot() []sendCall {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([][]string(nil), s.messages...)
+	return append([]sendCall(nil), s.calls...)
 }
 
 func (s *recordingSender) SendText(ctx context.Context, key string, content string) ([]string, error) {
@@ -117,7 +130,7 @@ func TestOutboundAnnouncesChatDone(t *testing.T) {
 	if len(snap) != 1 {
 		t.Fatalf("want 1 announcement, got %d", len(snap))
 	}
-	msg := snap[0][0]
+	msg := snap[0].content
 	if !strings.Contains(msg, "## 结论") || !strings.Contains(msg, "- 第一点") || strings.Contains(msg, "* 第二点") {
 		t.Fatalf("announcement not rendered through the subset renderer: %q", msg)
 	}
@@ -164,8 +177,8 @@ func TestOutboundAnnouncesTerminalFailure(t *testing.T) {
 	if len(snap) != 1 {
 		t.Fatalf("want 1 announcement, got %d", len(snap))
 	}
-	if !strings.Contains(snap[0][0], "任务失败") || !strings.Contains(snap[0][0], "runtime crash") {
-		t.Fatalf("failure notice missing copy: %q", snap[0][0])
+	if !strings.Contains(snap[0].content, "任务失败") || !strings.Contains(snap[0].content, "runtime crash") {
+		t.Fatalf("failure notice missing copy: %q", snap[0].content)
 	}
 }
 
@@ -173,7 +186,7 @@ func TestOutboundAnnouncesCancellation(t *testing.T) {
 	o, sender, _, _ := outboundFixture("active")
 	runEvent(t, o, protocol.EventTaskCancelled, map[string]any{})
 	snap := sender.snapshot()
-	if len(snap) != 1 || !strings.Contains(snap[0][0], "任务已取消") {
+	if len(snap) != 1 || !strings.Contains(snap[0].content, "任务已取消") {
 		t.Fatalf("cancellation notice missing: %q", snap)
 	}
 }
@@ -202,18 +215,11 @@ func TestOutboundLongReplyChunks(t *testing.T) {
 	long := strings.Repeat("很长的回复", 300) // 1800 bytes × ... > 4096
 	runEvent(t, o, protocol.EventChatDone, map[string]any{"content": long})
 	snap := sender.snapshot()
-	if len(snap) != 1 || len(snap[0]) < 2 {
-		t.Fatalf("long reply must arrive as multiple messages, got %v", snap[0])
+	if len(snap) != 1 {
+		t.Fatalf("want one logical announcement, got %d", len(snap))
 	}
-	total := 0
-	for _, piece := range snap[0] {
-		if len(piece) > MaxMarkdownBytes {
-			t.Fatalf("piece exceeds markdown limit")
-		}
-		total += len(piece)
-	}
-	if total != len(long) {
-		t.Fatalf("chunks lost content: %d vs %d", total, len(long))
+	if len(snap[0].content) != len(long) {
+		t.Fatalf("chunks lost content: %d vs %d", len(snap[0].content), len(long))
 	}
 }
 

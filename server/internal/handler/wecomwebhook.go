@@ -27,28 +27,30 @@ import (
 // installations, and the key is the bearer credential for the group. Only
 // the last-4 suffix crosses the boundary.
 type WecomWebhookInstallationResponse struct {
-	ID              string `json:"id"`
-	WorkspaceID     string `json:"workspace_id"`
-	AgentID         string `json:"agent_id"`
-	KeySuffix       string `json:"key_suffix"`
-	InstallerUserID string `json:"installer_user_id"`
-	Status          string `json:"status"`
-	InstalledAt     string `json:"installed_at"`
-	CreatedAt       string `json:"created_at"`
-	UpdatedAt       string `json:"updated_at"`
+	ID                    string `json:"id"`
+	WorkspaceID           string `json:"workspace_id"`
+	AgentID               string `json:"agent_id"`
+	KeySuffix             string `json:"key_suffix"`
+	AnnounceStatusChanges bool   `json:"announce_status_changes"`
+	InstallerUserID       string `json:"installer_user_id"`
+	Status                string `json:"status"`
+	InstalledAt           string `json:"installed_at"`
+	CreatedAt             string `json:"created_at"`
+	UpdatedAt             string `json:"updated_at"`
 }
 
-func wecomWebhookInstallationToResponse(row db.ChannelInstallation, suffix string) WecomWebhookInstallationResponse {
+func wecomWebhookInstallationToResponse(row db.ChannelInstallation, view wecomwebhook.PublicConfigView) WecomWebhookInstallationResponse {
 	return WecomWebhookInstallationResponse{
-		ID:              uuidToString(row.ID),
-		WorkspaceID:     uuidToString(row.WorkspaceID),
-		AgentID:         uuidToString(row.AgentID),
-		KeySuffix:       suffix,
-		InstallerUserID: uuidToString(row.InstallerUserID),
-		Status:          row.Status,
-		InstalledAt:     row.InstalledAt.Time.UTC().Format(time.RFC3339),
-		CreatedAt:       row.CreatedAt.Time.UTC().Format(time.RFC3339),
-		UpdatedAt:       row.UpdatedAt.Time.UTC().Format(time.RFC3339),
+		ID:                    uuidToString(row.ID),
+		WorkspaceID:           uuidToString(row.WorkspaceID),
+		AgentID:               uuidToString(row.AgentID),
+		KeySuffix:             view.KeySuffix,
+		AnnounceStatusChanges: view.AnnounceStatusChanges,
+		InstallerUserID:       uuidToString(row.InstallerUserID),
+		Status:                row.Status,
+		InstalledAt:           row.InstalledAt.Time.UTC().Format(time.RFC3339),
+		CreatedAt:             row.CreatedAt.Time.UTC().Format(time.RFC3339),
+		UpdatedAt:             row.UpdatedAt.Time.UTC().Format(time.RFC3339),
 	}
 }
 
@@ -76,7 +78,7 @@ func (h *Handler) ListWecomWebhookInstallations(w http.ResponseWriter, r *http.R
 	}
 	out := make([]WecomWebhookInstallationResponse, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, wecomWebhookInstallationToResponse(row, wecomWebhookKeySuffix(row.Config)))
+		out = append(out, wecomWebhookInstallationToResponse(row, wecomwebhook.PublicConfigFromRaw(row.Config)))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"installations":     out,
@@ -86,9 +88,11 @@ func (h *Handler) ListWecomWebhookInstallations(w http.ResponseWriter, r *http.R
 }
 
 // RegisterWecomWebhookRequest is the body for a webhook install: the key the
-// admin pasted from the WeCom group settings.
+// admin pasted from the WeCom group settings, plus the status-push toggle.
+// AnnounceStatusChanges nil means default ON (the JSON omits it).
 type RegisterWecomWebhookRequest struct {
-	Key string `json:"key"`
+	Key                   string `json:"key"`
+	AnnounceStatusChanges *bool  `json:"announce_status_changes,omitempty"`
 }
 
 // RegisterWecomWebhook (POST /api/workspaces/{id}/wecomwebhook/install?agent_id=…)
@@ -132,10 +136,11 @@ func (h *Handler) RegisterWecomWebhook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	row, err := h.WecomWebhookInstall.Register(r.Context(), wecomwebhook.RegisterParams{
-		WorkspaceID: wsUUID,
-		AgentID:     agentUUID,
-		InitiatorID: initiatorUUID,
-		Key:         body.Key,
+		WorkspaceID:           wsUUID,
+		AgentID:               agentUUID,
+		InitiatorID:           initiatorUUID,
+		Key:                   body.Key,
+		AnnounceStatusChanges: body.AnnounceStatusChanges,
 	})
 	if err != nil {
 		switch {
@@ -161,7 +166,52 @@ func (h *Handler) RegisterWecomWebhook(w http.ResponseWriter, r *http.Request) {
 	h.publish(protocol.EventWecomWebhookInstallationCreated, uuidToString(row.WorkspaceID), "user", userID, map[string]any{
 		"id": uuidToString(row.ID),
 	})
-	writeJSON(w, http.StatusOK, wecomWebhookInstallationToResponse(row, wecomWebhookKeySuffix(row.Config)))
+	writeJSON(w, http.StatusOK, wecomWebhookInstallationToResponse(row, wecomwebhook.PublicConfigFromRaw(row.Config)))
+}
+
+// SetWecomWebhookAnnounceStatusRequest flips the installation's status-push
+// toggle.
+type SetWecomWebhookAnnounceStatusRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetWecomWebhookAnnounceStatus (PUT /api/workspaces/{id}/wecomwebhook/installations/{installationId}/announce-status)
+// edits the installation-level toggle without re-verifying the key — the key
+// was proven at install time, and a preference flip is not a credential
+// change. Admin-only at the router, same surface as install/revoke.
+func (h *Handler) SetWecomWebhookAnnounceStatus(w http.ResponseWriter, r *http.Request) {
+	if h.WecomWebhookInstall == nil {
+		writeFeatureDisabled(w, "wecomwebhook_not_configured", "wecomwebhook integration not configured")
+		return
+	}
+	wsUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "id"), "workspace id")
+	if !ok {
+		return
+	}
+	instUUID, ok := parseUUIDOrBadRequest(w, chi.URLParam(r, "installationId"), "installation id")
+	if !ok {
+		return
+	}
+	var body SetWecomWebhookAnnounceStatusRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	row, err := h.WecomWebhookInstall.SetAnnounceStatusChanges(r.Context(), instUUID, wsUUID, body.Enabled)
+	if err != nil {
+		if errors.Is(err, wecomwebhook.ErrInstallationNotFound) {
+			writeError(w, http.StatusNotFound, "wecomwebhook installation not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "failed to update the announce toggle")
+		return
+	}
+	if userID, ok := requireUserID(w, r); ok {
+		h.publish(protocol.EventWecomWebhookInstallationCreated, uuidToString(wsUUID), "user", userID, map[string]any{
+			"id": uuidToString(row.ID),
+		})
+	}
+	writeJSON(w, http.StatusOK, wecomWebhookInstallationToResponse(row, wecomwebhook.PublicConfigFromRaw(row.Config)))
 }
 
 // RevokeWecomWebhookInstallation (DELETE /api/workspaces/{id}/wecomwebhook/installations/{installationId})
@@ -340,15 +390,4 @@ func (h *Handler) UnbindWecomWebhookChatSession(w http.ResponseWriter, r *http.R
 		"chat_session_id": uuidToString(sessionUUID),
 	})
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// wecomWebhookKeySuffix renders the masked key suffix for a response from a
-// row's raw config. A malformed config yields the "…" placeholder rather
-// than an error — a display suffix is never worth failing a list call.
-func wecomWebhookKeySuffix(config []byte) string {
-	inst, err := wecomwebhook.InstallationKeySuffixFromConfig(config)
-	if err != nil {
-		return "…"
-	}
-	return inst
 }
