@@ -2298,6 +2298,8 @@
   "wecomwebhook": {
     "section_title": "WeCom グループロボット",
     "page_description": "グループロボットの webhook でチャットの結果を WeCom グループへ通知します。送信専用で、ロボットはメッセージを受信できません。",
+    "announce_status_changes_label": "ステータス変更を通知",
+    "announce_status_changes_hint": "ワークスペース内のステータス遷移が「タイトル: from → to」としてグループに通知されます。",
     "key_label": "Webhook キー",
     "key_hint": "WeCom グループロボットの Webhook キーを貼り付けてください。接続時にグループへテストメッセージを送信して検証します。",
     "installing": "接続中…"

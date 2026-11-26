@@ -14,6 +14,7 @@ import { Button } from "@multica/ui/components/ui/button";
 import { DialogFooter } from "@multica/ui/components/ui/dialog";
 import { Input } from "@multica/ui/components/ui/input";
 import { Label } from "@multica/ui/components/ui/label";
+import { Switch } from "@multica/ui/components/ui/switch";
 import { wecomWebhookKeys } from "@multica/core/wecomwebhook";
 import { useT } from "../../i18n";
 
@@ -29,6 +30,9 @@ export function WecomWebhookChannelAuthorization({
   const { t } = useT("settings");
   const qc = useQueryClient();
   const [key, setKey] = useState("");
+  // Default ON: a group robot was installed to watch the workspace's work.
+  // Absent on the wire means the server also treats it as ON.
+  const [announceStatusChanges, setAnnounceStatusChanges] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +44,7 @@ export function WecomWebhookChannelAuthorization({
     try {
       const installation = await api.registerWecomWebhook(wsId, agentId, {
         key: key.trim(),
+        announce_status_changes: announceStatusChanges,
       });
       if (!installation.id || installation.status !== "active")
         throw new Error(t(($) => $.channels.connect_failed));
@@ -61,6 +66,22 @@ export function WecomWebhookChannelAuthorization({
 
   return (
     <form onSubmit={submit} className="grid gap-4" aria-busy={submitting}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="space-y-0.5">
+          <Label htmlFor="wecomwebhook-announce">
+            {t(($) => $.wecomwebhook.announce_status_changes_label)}
+          </Label>
+          <p className="text-caption text-muted-foreground">
+            {t(($) => $.wecomwebhook.announce_status_changes_hint)}
+          </p>
+        </div>
+        <Switch
+          id="wecomwebhook-announce"
+          checked={announceStatusChanges}
+          onCheckedChange={setAnnounceStatusChanges}
+          aria-label={t(($) => $.wecomwebhook.announce_status_changes_label)}
+        />
+      </div>
       <div className="space-y-1.5">
         <Label htmlFor="wecomwebhook-key">
           {t(($) => $.wecomwebhook.key_label)}

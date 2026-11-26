@@ -91,6 +91,8 @@ describe("WecomWebhookChannelAuthorization", () => {
     await waitFor(() => expect(mockRegister).toHaveBeenCalled());
     expect(mockRegister).toHaveBeenCalledWith("workspace-1", "agent-1", {
       key: "0123456789abcdef",
+      // Default ON: installed to watch the workspace's work.
+      announce_status_changes: true,
     });
     await waitFor(() =>
       expect(mockInvalidate).toHaveBeenCalledWith({
@@ -119,6 +121,19 @@ describe("WecomWebhookChannelAuthorization", () => {
       expect(screen.getByRole("button", { name: "Connecting..." })).toBeDisabled(),
     );
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("sends the toggle's off state when switched off", async () => {
+    renderForm();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("switch", { name: "Push issue status changes" }));
+    });
+    await submitKey("0123456789abcdef");
+    await waitFor(() => expect(mockRegister).toHaveBeenCalled());
+    expect(mockRegister).toHaveBeenCalledWith("workspace-1", "agent-1", {
+      key: "0123456789abcdef",
+      announce_status_changes: false,
+    });
   });
 
   it("surfaces the server's refusal sentence", async () => {

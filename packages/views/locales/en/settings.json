@@ -2321,6 +2321,8 @@
   "wecomwebhook": {
     "section_title": "WeCom group robot",
     "page_description": "Push a chat's outcomes into a WeCom group through a group-robot webhook. Outbound only — the robot cannot receive messages.",
+    "announce_status_changes_label": "Push issue status changes",
+    "announce_status_changes_hint": "Issue status transitions in this workspace are announced in the group as \"title: from → to\".",
     "key_label": "Webhook key",
     "key_hint": "Paste the webhook key from the WeCom group-robot settings. Installing posts a test message into the group to verify it.",
     "installing": "Connecting..."

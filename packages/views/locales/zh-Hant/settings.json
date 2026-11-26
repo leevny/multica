@@ -2298,6 +2298,8 @@
   "wecomwebhook": {
     "section_title": "企業微信群機器人",
     "page_description": "透過群機器人 webhook 把對話結果推送到企業微信群。僅出站——機器人不接收訊息。",
+    "announce_status_changes_label": "推送任務狀態變更",
+    "announce_status_changes_hint": "工作區內任務狀態流轉會以「標題：from → to」播報到群裡。",
     "key_label": "Webhook Key",
     "key_hint": "貼上企業微信群機器人的 Webhook Key。安裝時會向群裡發送一條測試訊息進行驗證。",
     "installing": "正在連接…"

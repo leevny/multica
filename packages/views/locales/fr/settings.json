@@ -2321,6 +2321,8 @@
   "wecomwebhook": {
     "section_title": "Robot de groupe WeCom",
     "page_description": "Envoie les résultats d'une discussion dans un groupe WeCom via le webhook d'un robot de groupe. Sortant uniquement : le robot ne reçoit pas de messages.",
+    "announce_status_changes_label": "Envoyer les changements de statut",
+    "announce_status_changes_hint": "Les transitions de statut de l'espace sont annoncées dans le groupe sous la forme « titre : de → à ».",
     "key_label": "Clé de webhook",
     "key_hint": "Collez la clé de webhook du robot de groupe WeCom. L'installation envoie un message de test dans le groupe pour la vérifier.",
     "installing": "Connexion…"
