@@ -14,6 +14,10 @@ export interface WecomWebhookInstallation {
   agent_id: string;
   /** Last 4 characters of the webhook key. */
   key_suffix: string;
+  /** Whether the workspace's issue status changes push to this group.
+   *  Installation-level master switch; default ON when absent (older
+   *  backends). */
+  announce_status_changes: boolean;
   installer_user_id: string;
   status: "active" | "revoked" | string;
   installed_at: string;
@@ -38,6 +42,8 @@ export interface ListWecomWebhookInstallationsResponse {
  * persisting — the group sees that message when the install succeeds. */
 export interface RegisterWecomWebhookRequest {
   key: string;
+  /** Status-push toggle; omit to accept the default (ON). */
+  announce_status_changes?: boolean;
 }
 
 /** Request body for pointing one chat session's terminal announcements at

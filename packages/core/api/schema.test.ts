@@ -861,6 +861,9 @@ describe("ApiClient schema fallback", () => {
         workspace_id: "",
         agent_id: "",
         key_suffix: "",
+        // The server treats an absent toggle as ON; the client default must
+        // match, or the UI would render a working robot as silenced.
+        announce_status_changes: true,
       });
       expect(res.install_supported).toBe(true);
     });

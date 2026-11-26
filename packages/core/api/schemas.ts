@@ -4693,6 +4693,9 @@ export const WecomWebhookInstallationSchema = z.object({
   workspace_id: z.string().default(""),
   agent_id: z.string().default(""),
   key_suffix: z.string().default(""),
+  // Absent on backends that predate the toggle: the server treats absent as
+  // ON, so the client default matches the server behavior.
+  announce_status_changes: z.boolean().default(true),
   installer_user_id: z.string().default(""),
   status: z.string().default("revoked"),
   installed_at: z.string().default(""),
@@ -4705,6 +4708,7 @@ export const EMPTY_WECOM_WEBHOOK_INSTALLATION: WecomWebhookInstallation = {
   workspace_id: "",
   agent_id: "",
   key_suffix: "",
+  announce_status_changes: true,
   installer_user_id: "",
   status: "revoked",
   installed_at: "",

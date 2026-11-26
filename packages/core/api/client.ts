@@ -6717,4 +6717,23 @@ export class ApiClient {
       method: "DELETE",
     });
   }
+
+  // setWecomWebhookAnnounceStatus flips the installation's status-push
+  // toggle without re-verifying the key (the key was proven at install).
+  async setWecomWebhookAnnounceStatus(
+    workspaceId: string,
+    installationId: string,
+    enabled: boolean,
+  ): Promise<WecomWebhookInstallation> {
+    const raw = await this.fetch<unknown>(
+      `/api/workspaces/${workspaceId}/wecomwebhook/installations/${installationId}/announce-status`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ enabled }),
+      },
+    );
+    return parseWithFallback(raw, WecomWebhookInstallationSchema, EMPTY_WECOM_WEBHOOK_INSTALLATION, {
+      endpoint: "PUT /api/workspaces/:id/wecomwebhook/installations/:installationId/announce-status",
+    });
+  }
 }
