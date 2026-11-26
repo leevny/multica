@@ -1319,6 +1319,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 				if outErr != nil {
 					slog.Error("wecomwebhook: outbound init failed; announcements disabled", "error", outErr)
 				} else {
+					wecomWebhookOutbound.SetStatusWindow(wecomWebhookStatusWindow())
 					wecomWebhookOutbound.Register(bus)
 				}
 
@@ -3231,6 +3232,24 @@ type WecomRelay interface {
 // A *WecomMetrics that is nil still satisfies wecom.Metrics, so assigning it
 // directly would give the adapter a non-nil interface holding a nil pointer —
 // and the first counter call would panic on a deployment with /metrics off.
+// wecomWebhookStatusWindow reads the status-announcement coalesce window from
+// MULTICA_WECOM_WEBHOOK_STATUS_WINDOW (Go duration, e.g. "8s"). Empty uses the
+// package default; an unparseable or non-positive value warns and falls back,
+// because a typo silently disabling announcements is worse than a loud default.
+func wecomWebhookStatusWindow() time.Duration {
+	raw := strings.TrimSpace(os.Getenv("MULTICA_WECOM_WEBHOOK_STATUS_WINDOW"))
+	if raw == "" {
+		return wecomwebhook.DefaultStatusWindow
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		slog.Warn("wecomwebhook: invalid MULTICA_WECOM_WEBHOOK_STATUS_WINDOW; using default",
+			"value", raw, "default", wecomwebhook.DefaultStatusWindow.String())
+		return wecomwebhook.DefaultStatusWindow
+	}
+	return d
+}
+
 func wecomMetricsOrNil(m *obsmetrics.WecomMetrics) wecom.Metrics {
 	if m == nil {
 		return nil

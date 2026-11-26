@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -14,12 +15,21 @@ import (
 	"github.com/multica-ai/multica/server/pkg/protocol"
 )
 
-// fakeOutboundQueries answers the two reads the announce path makes.
+// fakeOutboundQueries answers the reads the announce path makes.
 type fakeOutboundQueries struct {
-	binding    db.ChannelChatSessionBinding
-	bindingErr error
-	inst       db.ChannelInstallation
-	instErr    error
+	binding      db.ChannelChatSessionBinding
+	bindingErr   error
+	inst         db.ChannelInstallation
+	instErr      error
+	sessionTitle string
+}
+
+func (f *fakeOutboundQueries) GetChatSession(_ context.Context, id pgtype.UUID) (db.ChatSession, error) {
+	title := f.sessionTitle
+	if title == "" {
+		title = "发布新版本"
+	}
+	return db.ChatSession{ID: id, Title: title}, nil
 }
 
 func (f *fakeOutboundQueries) GetChannelChatSessionBindingBySession(_ context.Context, arg db.GetChannelChatSessionBindingBySessionParams) (db.ChannelChatSessionBinding, error) {
@@ -39,14 +49,25 @@ func (f *fakeOutboundQueries) GetChannelInstallation(_ context.Context, arg db.G
 	return f.inst, nil
 }
 
-// recordingSender captures announcements without touching the network.
+// recordingSender captures announcements without touching the network. The
+// flush timers run on their own goroutines, so reads and writes are locked.
 type recordingSender struct {
+	mu       sync.Mutex
 	messages [][]string
 }
 
 func (s *recordingSender) SendMarkdown(_ context.Context, _ string, content string) ([]string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.messages = append(s.messages, chunkUTF8(content, MaxMarkdownBytes))
 	return []string{"id-1"}, nil
+}
+
+// snapshot returns a copy of the recorded announcements.
+func (s *recordingSender) snapshot() [][]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([][]string(nil), s.messages...)
 }
 
 func (s *recordingSender) SendText(ctx context.Context, key string, content string) ([]string, error) {
@@ -92,10 +113,11 @@ func TestOutboundAnnouncesChatDone(t *testing.T) {
 		"chat_session_id": sessionID(),
 		"content":         "## 结论\n\n- 第一点\n* 第二点",
 	})
-	if len(sender.messages) != 1 {
-		t.Fatalf("want 1 announcement, got %d", len(sender.messages))
+	snap := sender.snapshot()
+	if len(snap) != 1 {
+		t.Fatalf("want 1 announcement, got %d", len(snap))
 	}
-	msg := sender.messages[0][0]
+	msg := snap[0][0]
 	if !strings.Contains(msg, "## 结论") || !strings.Contains(msg, "- 第一点") || strings.Contains(msg, "* 第二点") {
 		t.Fatalf("announcement not rendered through the subset renderer: %q", msg)
 	}
@@ -105,8 +127,8 @@ func TestOutboundSkipsUnboundSession(t *testing.T) {
 	o, sender, q, _ := outboundFixture("active")
 	q.bindingErr = pgx.ErrNoRows
 	runEvent(t, o, protocol.EventChatDone, map[string]any{"content": "hello"})
-	if len(sender.messages) != 0 {
-		t.Fatalf("unbound session must be silently skipped, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("unbound session must be silently skipped, got %d sends", len(sender.snapshot()))
 	}
 }
 
@@ -116,8 +138,8 @@ func TestOutboundSkipsNoResponseTurn(t *testing.T) {
 		"content":      "",
 		"message_kind": protocol.ChatMessageKindNoResponse,
 	})
-	if len(sender.messages) != 0 {
-		t.Fatalf("no_response turn must not announce, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("no_response turn must not announce, got %d sends", len(sender.snapshot()))
 	}
 }
 
@@ -127,8 +149,8 @@ func TestOutboundSkipsIntermediateFailure(t *testing.T) {
 		"failure_reason": "boom",
 		"retry_pending":  true,
 	})
-	if len(sender.messages) != 0 {
-		t.Fatalf("retry-pending failure must not announce, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("retry-pending failure must not announce, got %d sends", len(sender.snapshot()))
 	}
 }
 
@@ -138,27 +160,29 @@ func TestOutboundAnnouncesTerminalFailure(t *testing.T) {
 		"failure_reason": "runtime crash",
 		"retry_pending":  false,
 	})
-	if len(sender.messages) != 1 {
-		t.Fatalf("want 1 announcement, got %d", len(sender.messages))
+	snap := sender.snapshot()
+	if len(snap) != 1 {
+		t.Fatalf("want 1 announcement, got %d", len(snap))
 	}
-	if !strings.Contains(sender.messages[0][0], "任务失败") || !strings.Contains(sender.messages[0][0], "runtime crash") {
-		t.Fatalf("failure notice missing copy: %q", sender.messages[0][0])
+	if !strings.Contains(snap[0][0], "任务失败") || !strings.Contains(snap[0][0], "runtime crash") {
+		t.Fatalf("failure notice missing copy: %q", snap[0][0])
 	}
 }
 
 func TestOutboundAnnouncesCancellation(t *testing.T) {
 	o, sender, _, _ := outboundFixture("active")
 	runEvent(t, o, protocol.EventTaskCancelled, map[string]any{})
-	if len(sender.messages) != 1 || !strings.Contains(sender.messages[0][0], "任务已取消") {
-		t.Fatalf("cancellation notice missing: %q", sender.messages)
+	snap := sender.snapshot()
+	if len(snap) != 1 || !strings.Contains(snap[0][0], "任务已取消") {
+		t.Fatalf("cancellation notice missing: %q", snap)
 	}
 }
 
 func TestOutboundSkipsRevokedInstallation(t *testing.T) {
 	o, sender, _, _ := outboundFixture("revoked")
 	runEvent(t, o, protocol.EventChatDone, map[string]any{"content": "hello"})
-	if len(sender.messages) != 0 {
-		t.Fatalf("revoked installation must not receive pushes, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("revoked installation must not receive pushes, got %d sends", len(sender.snapshot()))
 	}
 }
 
@@ -168,8 +192,8 @@ func TestOutboundSkipsIssueTasks(t *testing.T) {
 	bus := events.New()
 	o.Register(bus)
 	bus.Publish(e)
-	if len(sender.messages) != 0 {
-		t.Fatalf("event without a chat session must not announce, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("event without a chat session must not announce, got %d sends", len(sender.snapshot()))
 	}
 }
 
@@ -177,11 +201,12 @@ func TestOutboundLongReplyChunks(t *testing.T) {
 	o, sender, _, _ := outboundFixture("active")
 	long := strings.Repeat("很长的回复", 300) // 1800 bytes × ... > 4096
 	runEvent(t, o, protocol.EventChatDone, map[string]any{"content": long})
-	if len(sender.messages) != 1 || len(sender.messages[0]) < 2 {
-		t.Fatalf("long reply must arrive as multiple messages, got %v", sender.messages[0])
+	snap := sender.snapshot()
+	if len(snap) != 1 || len(snap[0]) < 2 {
+		t.Fatalf("long reply must arrive as multiple messages, got %v", snap[0])
 	}
 	total := 0
-	for _, piece := range sender.messages[0] {
+	for _, piece := range snap[0] {
 		if len(piece) > MaxMarkdownBytes {
 			t.Fatalf("piece exceeds markdown limit")
 		}
@@ -204,7 +229,7 @@ func TestOutboundEventWithoutPayload(t *testing.T) {
 	bus := events.New()
 	o.Register(bus)
 	bus.Publish(e)
-	if len(sender.messages) != 0 {
-		t.Fatalf("payload-less event must not announce, got %d sends", len(sender.messages))
+	if len(sender.snapshot()) != 0 {
+		t.Fatalf("payload-less event must not announce, got %d sends", len(sender.snapshot()))
 	}
 }
